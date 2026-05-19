@@ -1,43 +1,87 @@
-;Header and description
 (define (domain gazebo_world)
 
-(:requirements :strips :typing :negative-preconditions)
+(:requirements :strips :typing :durative-actions :equality)
 
 (:types 
     piece human robot - locatable
     area
 )
 
-; un-comment following line if constants are needed
-;(:constants )
-
 (:predicates
     (at ?x - locatable ?y - area)
     (available ?x - robot)
+    (clean ?x - area)
     (holding ?x - robot ?y - piece)
-    ;(clear ?x - area)
 )
 
-
-;(:functions todo: define numeric functions here)
-
-;define actions here
-(:action move
+(:durative-action move
     :parameters (?x - robot ?from - area ?to - area)
-    :precondition (and (at ?x ?from) (not (at ?x ?to)))
-    :effect (and (at ?x ?to) (not (at ?x ?from)))
+    :duration (= ?duration 5)
+    :condition (and 
+        (at start (and
+                (at ?x ?from)
+                (clean ?to)
+            )
+        )
+        (over all 
+            (at ?x ?from)
+        )
+    )
+    :effect (and 
+        (at end (and
+            (at ?x ?to)
+            (not (at ?x ?from))
+            (not (clean ?to))
+        ))
+    )
 )
 
-(:action pick
+(:durative-action pick
     :parameters (?x - robot ?y - area ?z - piece)
-    :precondition (and (available ?x) (at ?x ?y) (at ?z ?y))
-    :effect (and (not (available ?x)) (holding ?x ?z))
+    :duration (= ?duration 5)
+    :condition (and 
+        (at start (and 
+            (available ?x) 
+            (at ?x ?y) 
+            (at ?z ?y)
+        ))
+        (over all (and 
+            (at ?x ?y)
+        ))
+        (at end 
+            (at ?x ?y)
+        )
+    )
+    :effect (and 
+        (at end (and 
+            (not(available ?x))
+            (holding ?x ?z)
+        ))
+    )
 )
 
-(:action place
+(:durative-action place
     :parameters (?x - robot ?y - area ?z - piece)
-    :precondition (and (at ?x ?y) (holding ?x ?z))
-    :effect (and (at ?z ?y) (available ?x) (not (holding ?x ?z)))
+    :duration (= ?duration 5)
+    :condition (and 
+        (at start (and 
+            (holding ?x ?z)
+            (at ?x ?y)
+        ))
+        (over all 
+            (at ?x ?y) 
+        )
+        (at end
+            (at ?x ?y) 
+        )
+    )
+    :effect (and
+        (at end (and 
+            (at ?z ?y)
+            (available ?x)
+            (not(holding ?x ?z))
+        ))
+    )
 )
 
 )
