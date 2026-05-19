@@ -23,14 +23,13 @@
                 (clean ?to)
             )
         )
-        (over all 
-            (at ?x ?from)
-        )
     )
     :effect (and 
+        (at start
+            (not (at ?x ?from))
+        )
         (at end (and
             (at ?x ?to)
-            (not (at ?x ?from))
             (not (clean ?to))
         ))
     )
@@ -56,6 +55,7 @@
         (at end (and 
             (not(available ?x))
             (holding ?x ?z)
+            (at ?x ?y)
         ))
     )
 )
@@ -77,6 +77,7 @@
     )
     :effect (and
         (at end (and 
+            (at ?x ?y)
             (at ?z ?y)
             (available ?x)
             (not(holding ?x ?z))
