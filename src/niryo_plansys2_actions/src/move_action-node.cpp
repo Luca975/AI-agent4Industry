@@ -69,6 +69,7 @@ int main(int argc, char ** argv)
 {
     init(argc, argv);
     auto node = std::make_shared<moveAction>();
+
     node->set_parameter(rclcpp::Parameter("action_name", "move"));
     node->trigger_transition(lifecycle_msgs::msg::Transition::TRANSITION_CONFIGURE);
     spin(node->get_node_base_interface());
