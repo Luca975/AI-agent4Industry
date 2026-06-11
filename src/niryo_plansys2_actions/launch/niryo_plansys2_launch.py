@@ -39,7 +39,10 @@ def generate_launch_description():
         name='zone_map_server_node',
         namespace=namespace,
         output='screen',
-        parameters=[{'zones_file': os.path.join(pkg_dir, 'config', 'zones.csv')}])
+        parameters=[{
+            'zones_file': os.path.join(pkg_dir, 'config', 'zones.csv'),
+            'zone_thresholds': 0.15
+            }])
 
     move_cmd = Node(
         package='niryo_plansys2_actions',
