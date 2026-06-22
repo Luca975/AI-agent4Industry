@@ -30,7 +30,7 @@ class SceneObserver(Node):
             return False, [], info
         
         if not response.success:
-            info=f"Service call to {client.srv_name} returned failure: {response.message}"
+            info=f"Service call to {client.srv_name} returned failure"
             self.get_logger().warn(info)
             return False, [], info
         
