@@ -1,6 +1,8 @@
 from langchain_core.tools import tool
 from langgraph.prebuilt import ToolRuntime
+from langchain_core.messages import ToolMessage
 from agent_context import AgentContext
+from langgraph.types import Command
 
 
 @tool
@@ -75,4 +77,21 @@ def get_plan(runtime: ToolRuntime[AgentContext]) -> str:
         return "Plan exists for the current domain and problem"
     return f"No plan found: {info}"
 
-tools = [observe_scene, get_domain, send_problem, clear_problem, get_plan]
+@tool
+def set_problem(problem_str:str, runtime: ToolRuntime[AgentContext]) -> Command:
+    """Store the generated problem in the agent state, to be later sent to the system with the send_problem tool.
+    Pass the full PDDL problem as a single string. Call this once you have written the problem"""
+
+    return Command(
+        update={
+            "cur_problem": problem_str,
+            "messages":[
+                ToolMessage(
+                    content="Problem stored in the agent state.",
+                    tool_call_id=runtime.tool_call_id,
+                )
+            ],
+        }
+    )
+
+tools = [observe_scene, get_domain, send_problem, clear_problem, get_plan, set_problem]
