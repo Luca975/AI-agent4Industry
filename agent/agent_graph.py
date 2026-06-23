@@ -18,7 +18,7 @@ def route_from_llm(state:AgentState)->str:
     return "idle"
 
 
-builder = StateGraph(AgentState)
+builder = StateGraph(AgentState, context_schema=AgentContext)
 
 builder.add_node("idle",idle_node)
 builder.add_node("llm",llm_node)
@@ -35,5 +35,5 @@ builder.add_conditional_edges("llm",route_from_llm,{
 })
 builder.add_edge("tools","llm")
 
-graph = builder.compile(checkpointer=InMemorySaver(), context_schema=AgentContext)
+graph = builder.compile(checkpointer=InMemorySaver())
 
