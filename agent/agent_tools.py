@@ -60,7 +60,7 @@ def clear_problem(runtime: ToolRuntime[AgentContext]) -> str:
     return f"Error while clearing the problem knowledge: {info}"
 
 @tool
-def get_plan(runtime: ToolRuntime[AgentContext]) -> str:
+def get_plan(runtime: ToolRuntime[AgentContext]):
     """Ask the planner whether a plan exists for the current domain and problem.
     Use this after loading the problem, to verify if it is solvable"""
 
@@ -72,10 +72,21 @@ def get_plan(runtime: ToolRuntime[AgentContext]) -> str:
     if not problem_str:
         return "No problem generated yet"
     
-    success, info = runtime.context.planner_client.get_plan(domain, problem_str)
-    if success:
-        return "Plan exists for the current domain and problem"
-    return f"No plan found: {info}"
+    success, plan, info = runtime.context.planner_client.get_plan(domain, problem_str)
+    if not success:
+        return f"No plan found: {info}"
+    
+    return Command(
+        update={
+            "cur_plan":plan,
+            "messages":[
+                ToolMessage(
+                    content="Plan found: the problem is solvable",
+                    tool_call_id=runtime.tool_call_id
+                )
+            ]
+        }
+    )
 
 @tool
 def set_problem(problem_str:str, runtime: ToolRuntime[AgentContext]) -> Command:

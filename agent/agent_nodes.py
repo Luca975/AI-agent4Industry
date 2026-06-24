@@ -69,7 +69,8 @@ def idle_node(state: AgentState)-> AgentState:
     return{
         "messages" : [HumanMessage(content=user_input)],
         "phase" : "idle",
-        "cur_problem" : None
+        "cur_problem" : None,
+        "cur_plan" : None
     }
 
 def llm_node(state:AgentState)->AgentState:
