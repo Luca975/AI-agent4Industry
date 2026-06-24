@@ -24,6 +24,9 @@ builder.add_node("idle",idle_node)
 builder.add_node("llm",llm_node)
 builder.add_node("tools",ToolNode(tools))
 
+# TODO:
+#builder.set_entry_point("idle")
+
 builder.add_edge(START,"idle")
 builder.add_conditional_edges("idle",route_from_idle,{
   "llm":"llm",

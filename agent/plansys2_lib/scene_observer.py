@@ -1,36 +1,40 @@
-import rclpy
-from rclpy.node import Node
+# import rclpy
+# from rclpy.node import Node
 
+from plansys2_lib.base import PlanSys2ClientBase
 from niryo_plansys2_interfaces.srv import ObserveScene
 from std_msgs.msg import Empty
 
-class SceneObserver(Node):
+class SceneObserver(PlanSys2ClientBase):
 
     def __init__(self)->None:
         super().__init__('agent_scene_observer_client')
-        self._observe_scene_client = self.create_client(ObserveScene, '/observe_scene')
+        self._observe_scene_client = self.create_client(ObserveScene, '/observe_scene', callback_group=self.cb_group)
 
     def observe_scene(self, timeout_sec:float=5.0)->tuple[bool, list, str]:
-        client = self._observe_scene_client
+        # client = self._observe_scene_client
 
-        if not client.wait_for_service(timeout_sec=timeout_sec):
-            info=f"Service {client.srv_name} not available after waiting for {timeout_sec} seconds"
-            self.get_logger().error(info)
-            return False, [], info
+        # if not client.wait_for_service(timeout_sec=timeout_sec):
+        #     info=f"Service {client.srv_name} not available after waiting for {timeout_sec} seconds"
+        #     self.get_logger().error(info)
+        #     return False, [], info
         
         req = ObserveScene.Request()
         req.request = Empty()
-        future = client.call_async(req)
-        rclpy.spin_until_future_complete(self, future)
-        response = future.result()
+
+        # future = client.call_async(req)
+        # rclpy.spin_until_future_complete(self, future)
+        # response = future.result()
+
+        response = self._call_sync(self._observe_scene_client, req, timeout_sec)
 
         if response is None:
-            info=f"Service call to {client.srv_name} failed"
+            info=f"Service call to {self._observe_scene_client.srv_name} failed"
             self.get_logger().error(info)
             return False, [], info
         
         if not response.success:
-            info=f"Service call to {client.srv_name} returned failure"
+            info=f"Service call to {self._observe_scene_client.srv_name} returned failure"
             self.get_logger().warn(info)
             return False, [], info
         
