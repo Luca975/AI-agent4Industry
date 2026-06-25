@@ -1,8 +1,10 @@
 from langchain_core.messages import SystemMessage,HumanMessage,AIMessage
 from langchain_anthropic import ChatAnthropic
 from langgraph.types import interrupt
+from langgraph.runtime import Runtime
 
 from agent_state import AgentState
+from agent_context import AgentContext
 from agent_tools import tools
 
 llm = ChatAnthropic(model="claude-sonnet-4-6", temperature=0).bind_tools(tools)
@@ -77,3 +79,39 @@ def llm_node(state:AgentState)->AgentState:
     messages = [SystemMessage(content=SYSTEM_PROMPT)]+state["messages"]
     response = llm.invoke(messages)
     return {"messages":[response]}
+
+
+def running_node(state: AgentState, runtime:Runtime[AgentContext])->AgentState:
+    
+    plan = state.get("cur_plan")
+    if plan is None or not plan.items:
+        return{
+            "messages":[AIMessage(content="No plan to execute.")],
+            "phase":"failed"
+        }
+    
+    success, info = runtime.context.executor_client.execute_plan(plan)
+
+    if success:
+        return {
+            "messages":[AIMessage(content="Plan executed successfully.")],
+            "phase":"complete"
+        }
+    
+    return{
+        "messages":[AIMessage(content=f"Plan execution failed: {info}.")],
+        "phase":"failed"
+    }
+
+def safe_pos_node(state:AgentState, runtime:Runtime[AgentContext])->AgentState:
+    
+    success,info = runtime.context.home_pos_client.go_home()
+    if success:
+        msg = "Execution failed. Arm moved back to the home position"
+    else:
+        msg = f"Execution failed. Arm cannot move back to home: {info}"
+
+    return{
+        "messages":[AIMessage(content=msg)],
+        "phase":"failed"
+    }
