@@ -3,7 +3,8 @@
 
 from plansys2_lib.base import PlanSys2ClientBase
 from plansys2_msgs.srv import GetPlan
-from plansys2_msgs.msg import Plan
+from agent_types import PlanStep
+# from plansys2_msgs.msg import Plan
 
 class Planner(PlanSys2ClientBase):
 
@@ -11,7 +12,7 @@ class Planner(PlanSys2ClientBase):
         super().__init__('agent_planner_client')
         self._get_plan_client = self.create_client(GetPlan, '/planner/get_plan', callback_group=self.cb_group)
 
-    def get_plan(self, domain:str, problem:str, timeout_sec:float=15.0)->tuple[bool, Plan, str]:
+    def get_plan(self, domain:str, problem:str, timeout_sec:float=15.0)->tuple[bool, list[PlanStep], str]:
 
         # client = self._get_plan_client
         # if not client.wait_for_service(timeout_sec=timeout_sec):
@@ -30,9 +31,15 @@ class Planner(PlanSys2ClientBase):
         if response is None:
             info=f"Service call to {self._get_plan_client.srv_name} failed"
             self.get_logger().error(info)
-            return False, Plan(), info
+            return False, [], info
         if not response.success:
             info=f"Service call to {self._get_plan_client.srv_name} returned failure: {response.error_info}"
             self.get_logger().warn(info)
-            return False, Plan(), response.error_info
-        return True,response.plan,response.error_info
+            return False, [], response.error_info
+        
+        plan : list[PlanStep] = [
+            {"time": item.time, "action": item.action, "duration":item.duration} for item in response.plan.items
+        ]
+
+
+        return True,plan,response.error_info

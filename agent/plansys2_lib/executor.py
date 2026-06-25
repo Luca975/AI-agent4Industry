@@ -2,7 +2,8 @@ import threading
 
 from rclpy.action import ActionClient
 from plansys2_msgs.action import ExecutePlan
-from plansys2_msgs.msg import Plan
+from plansys2_msgs.msg import Plan, PlanItem
+from agent_types import PlanStep
 
 from plansys2_lib.base import PlanSys2ClientBase
 
@@ -14,7 +15,18 @@ class Executor(PlanSys2ClientBase):
             self, ExecutePlan, '/execute_plan', callback_group=self.cb_group
         )
     
-    def execute_plan(self, plan:Plan, timeout_sec:float = 120.0)->tuple[bool, str]:
+    @staticmethod
+    def _to_ros_plan(plan_steps:list[PlanStep]) -> Plan:
+        plan = Plan()
+        for step in plan_steps:
+            item = PlanItem()
+            item.time = step["time"]
+            item.action = step["action"]
+            item.duration = step["duration"]
+            plan.items.append(item)
+        return plan
+
+    def execute_plan(self, plan_steps:list[PlanStep], timeout_sec:float = 120.0)->tuple[bool, str]:
 
         if not self._execute_plan_client.wait_for_server(timeout_sec=5.0):
             info = "Action server /execute_plan not available"
@@ -22,7 +34,7 @@ class Executor(PlanSys2ClientBase):
             return False,info
         
         goal = ExecutePlan.Goal()
-        goal.plan = plan
+        goal.plan = self._to_ros_plan(plan_steps)
 
         goal_done = threading.Event()
         goal_future = self._execute_plan_client.send_goal_async(goal)

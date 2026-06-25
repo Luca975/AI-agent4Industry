@@ -84,7 +84,7 @@ def llm_node(state:AgentState)->AgentState:
 def running_node(state: AgentState, runtime:Runtime[AgentContext])->AgentState:
     
     plan = state.get("cur_plan")
-    if plan is None or not plan.items:
+    if not plan:
         return{
             "messages":[AIMessage(content="No plan to execute.")],
             "phase":"failed"
