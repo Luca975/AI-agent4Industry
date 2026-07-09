@@ -39,10 +39,17 @@ Repository layout (the repo root **is** the colcon workspace):
 ```
 AI-AGENT4INDUSTRY/                       # repo = colcon workspace
 ├── pddl/                                # PDDL domain + problem files
-├── agent-env/                           # Python venv for the agent (gitignored)
+├── agent/                               # LangGraph ReAct agent
+│   ├── agent_state.py                   # AgentState, PlanStep
+│   ├── agent_context.py                 # context_schema
+│   ├── agent_graph.py                   # StateGraph definition
+│   ├── agent_nodes.py                    # graph node implementations
+│   ├── agent_tools.py                    # ReAct tools
+│   ├── agent_types.py                     # shared type definitions
+│   ├── plansys2_lib/                     # ROS2 client nodes 
+│   └── main.py                           # entry point
 └── src/
-    ├── agent/                           # LangGraph ReAct agent
-    ├── niryo_plansys2_interfaces/       # custom GetZone.srv (zone lookup)
+    ├── niryo_plansys2_interfaces/       # custom GetZone.srv, ObserveScene.srv, SceneObject.msg
     └── niryo_plansys2_actions/          # MoveAction, PickAction, PlaceAction, ZoneMapServer
 ```
  
@@ -93,6 +100,43 @@ pip install -U --ignore-installed langgraph
  
 ```bash
 python -c "import rclpy, langgraph; print('ok')"
+```
+ 
+---
+
+## 4. Running the system
+ 
+The system requires **three terminals**, run in this order from the host:
+ 
+### Terminal 1 — Niryo ROS 2 driver
+ 
+```bash
+cd ~/ros2_drivers_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+source venv/bin/activate
+ros2 launch niryo_ned_ros2_driver driver.launch.py drivers_list_file:=./src/ned-ros2-driver/niryo_ned_ros2_driver/config/drivers_list.yaml
+```
+ 
+### Terminal 2 — PlanSys2 stack
+ 
+```bash
+cd ~/AI-agent4Industry
+source /opt/ros/jazzy/setup.bash
+source /home/luca/ros2_drivers_ws/install/setup.bash
+source install/setup.bash
+ros2 launch niryo_plansys2_actions niryo_plansys2_launch.py
+```
+ 
+### Terminal 3 — LangGraph agent
+ 
+```bash
+cd ~/AI-agent4Industry
+source /opt/ros/jazzy/setup.bash
+source /home/luca/ros2_drivers_ws/install/setup.bash
+source install/setup.bash
+source agent-env/bin/activate
+python3 agent/main.py
 ```
  
 ---
