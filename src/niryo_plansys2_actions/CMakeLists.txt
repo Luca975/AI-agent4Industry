@@ -25,6 +25,7 @@ ament_target_dependencies(pick_action_node
   rclcpp
   plansys2_executor
   lifecycle_msgs
+  niryo_plansys2_interfaces
 )
 
 add_executable(place_action_node src/place_action-node.cpp)
@@ -32,6 +33,7 @@ ament_target_dependencies(place_action_node
   rclcpp
   plansys2_executor
   lifecycle_msgs
+  niryo_plansys2_interfaces
 )
 
 add_executable(zone_map_server_node src/zone_map-server.cpp)

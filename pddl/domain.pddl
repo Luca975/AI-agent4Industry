@@ -56,6 +56,7 @@
             (not(available ?x))
             (holding ?x ?z)
             (at ?x ?y)
+            (not(at ?z ?y))
         ))
     )
 )
