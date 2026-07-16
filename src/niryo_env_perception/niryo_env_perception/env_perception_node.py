@@ -5,12 +5,7 @@ import rclpy
 from rclpy.node import Node
 
 from geometry_msgs.msg import Quaternion
-from vision_msgs.msg import (
-    Detection3D,
-    Detection3DArray,
-    ObjectHypothesisWithPose,
-)
-
+from niryo_env_interfaces.msg import EnvObject, EnvScene
 
 def rpy_to_quaternion(roll: float, pitch: float, yaw: float) -> Quaternion:
     """Convert roll/pitch/yaw (radians) to a quaternion.
@@ -44,11 +39,11 @@ class EnvPerception(Node):
         self._frame_id = self.get_parameter('frame_id').value
         rate = self.get_parameter('publish_rate').value
 
-        self._pub = self.create_publisher(Detection3DArray, '/env/detections', 10)
+        self._pub = self.create_publisher(EnvScene, '/env/scene', 10)
         self._timer = self.create_timer(1.0 / rate, self._tick)
 
         self.get_logger().info(
-            f"Publishing /env/detections at {rate} Hz "
+            f"Publishing /env/scene at {rate} Hz "
             f"(frame '{self._frame_id}', scene '{self._scene_file}')"
         )
 
@@ -60,65 +55,39 @@ class EnvPerception(Node):
         """
         try:
             with open(self._scene_file) as f:
-                return json.load(f).get('detections', [])
+                return json.load(f).get('objects', [])
         except (OSError, json.JSONDecodeError) as e:
             # The file may be mid-write while edited by hand: skip this tick
             # rather than publishing a wrong scene.
             self.get_logger().warn(f"Cannot read scene file: {e}", throttle_duration_sec=5.0)
             return None
 
-    def _to_detection(self, obj: dict, stamp) -> Detection3D:
-        """Compose one Detection3D out of the flat facts of the scene file.
+    def _to_env_object(self, obj: dict) -> EnvObject:
 
-        The two poses of the message carry different things, on purpose:
-
-        - bbox      -> the raw box: the object CENTER plus its extent. This is
-                       what a detector actually produces, and what the JSON holds.
-        - results[] -> the SUPPORT POINT: the bottom of the box. Consumers match
-                       objects against zones, and a zone's z is its resting
-                       surface, so both sides of the comparison must be "where
-                       the thing rests". Publishing the center instead would work
-                       by luck for a flat cube (1 cm off) and fail for a standing
-                       human (90 cm off).
-
-        Deriving the support point from the box needs no per-class special case:
-        a 2 cm cube centred at z=0.01 and a 1.8 m human centred at z=0.9 both
-        come out resting at z=0.0.
-        """
+        out = EnvObject()
+        out.id = obj['id']
+        out.class_id = obj['class_id']
+        out.color = obj.get('color', '')
+        out.score = float(obj.get('score', 1.0))
+ 
         pos = obj['position']
-        size = obj.get('size', {})
-        sz = float(size.get('z', 0.0))
-
+        out.pose.position.x = float(pos['x'])
+        out.pose.position.y = float(pos['y'])
+        out.pose.position.z = float(pos['z'])
+ 
         rpy = obj.get('rpy', {})
-        orientation = rpy_to_quaternion(
+        out.pose.orientation = rpy_to_quaternion(
             float(rpy.get('roll', 0.0)),
             float(rpy.get('pitch', 0.0)),
             float(rpy.get('yaw', 0.0)),
         )
-
-        det = Detection3D()
-        det.header.stamp = stamp
-        det.header.frame_id = self._frame_id
-        det.id = obj.get('id', '')
-
-        det.bbox.center.position.x = float(pos['x'])
-        det.bbox.center.position.y = float(pos['y'])
-        det.bbox.center.position.z = float(pos['z'])
-        det.bbox.center.orientation = orientation
-        det.bbox.size.x = float(size.get('x', 0.0))
-        det.bbox.size.y = float(size.get('y', 0.0))
-        det.bbox.size.z = sz
-
-        hyp = ObjectHypothesisWithPose()
-        hyp.hypothesis.class_id = obj['class_id']
-        hyp.hypothesis.score = float(obj.get('score', 1.0))
-        hyp.pose.pose.position.x = float(pos['x'])
-        hyp.pose.pose.position.y = float(pos['y'])
-        hyp.pose.pose.position.z = float(pos['z']) - sz / 2.0
-        hyp.pose.pose.orientation = orientation
-        det.results.append(hyp)
-
-        return det
+ 
+        size = obj.get('size', {})
+        out.size.x = float(size.get('x', 0.0))
+        out.size.y = float(size.get('y', 0.0))
+        out.size.z = float(size.get('z', 0.0))
+ 
+        return out
 
     def _tick(self) -> None:
         objects = self._read_scene()
@@ -127,13 +96,13 @@ class EnvPerception(Node):
 
         stamp = self.get_clock().now().to_msg()
 
-        msg = Detection3DArray()
+        msg = EnvScene()
         msg.header.stamp = stamp
         msg.header.frame_id = self._frame_id
 
         for obj in objects:
             try:
-                msg.detections.append(self._to_detection(obj, stamp))
+                msg.objects.append(self._to_env_object(obj))
             except (KeyError, TypeError, ValueError) as e:
                 self.get_logger().warn(f"Skipping malformed object {obj}: {e}")
 

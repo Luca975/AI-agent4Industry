@@ -1,12 +1,12 @@
 #include "plansys2_executor/ActionExecutorClient.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-#include "niryo_plansys2_interfaces/msg/tool_status.hpp"
+#include "niryo_env_interfaces/msg/tool_status.hpp"
 
 using namespace std::chrono_literals;
 using namespace plansys2;
 
-using ToolStatus = niryo_plansys2_interfaces::msg::ToolStatus;
+using ToolStatus = niryo_env_interfaces::msg::ToolStatus;
 using CallbackReturnT = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
 class PlaceAction : public ActionExecutorClient

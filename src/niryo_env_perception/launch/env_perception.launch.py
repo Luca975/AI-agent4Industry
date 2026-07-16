@@ -1,17 +1,12 @@
 import os
 
-from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node
 
 
 def generate_launch_description() -> LaunchDescription:
-    scene_file = os.path.join(
-        get_package_share_directory('niryo_env_perception'),
-        'config',
-        'scene.json',
-    )
 
+    scene_file = os.path.expanduser('~/AI-agent4Industry/scenes/scene.json')
     return LaunchDescription([
         Node(
             package='niryo_env_perception',

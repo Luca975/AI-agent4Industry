@@ -1,8 +1,9 @@
 {
-  "detections": [
+  "objects": [
     {
-      "id": "green_cube_1",
-      "class_id": "green_cube",
+      "id": "cube_1",
+      "class_id": "cube",
+      "color": "green",
       "score": 0.97,
       "position": { "x": 0.21, "y": -0.04, "z": 0.01 },
       "rpy": { "roll": 0.0, "pitch": 0.0, "yaw": -0.3 },

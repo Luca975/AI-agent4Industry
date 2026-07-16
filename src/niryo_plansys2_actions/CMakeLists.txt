@@ -8,6 +8,7 @@ find_package(plansys2_executor REQUIRED)
 find_package(niryo_ned_ros2_interfaces REQUIRED)
 find_package(niryo_plansys2_interfaces REQUIRED)
 find_package(lifecycle_msgs REQUIRED)
+find_package(niryo_env_interfaces REQUIRED)
 
 add_executable(move_action_node src/move_action-node.cpp)
 target_include_directories(move_action_node PRIVATE include)
@@ -25,7 +26,7 @@ ament_target_dependencies(pick_action_node
   rclcpp
   plansys2_executor
   lifecycle_msgs
-  niryo_plansys2_interfaces
+  niryo_env_interfaces
 )
 
 add_executable(place_action_node src/place_action-node.cpp)
@@ -33,7 +34,7 @@ ament_target_dependencies(place_action_node
   rclcpp
   plansys2_executor
   lifecycle_msgs
-  niryo_plansys2_interfaces
+  niryo_env_interfaces
 )
 
 add_executable(zone_map_server_node src/zone_map-server.cpp)

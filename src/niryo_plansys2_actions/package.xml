@@ -14,6 +14,7 @@
   <depend>niryo_ned_ros2_interfaces</depend>
   <depend>niryo_plansys2_interfaces</depend>
   <depend>lifecycle_msgs</depend>
+  <depend>niryo_env_interfaces</depend>
 
   <export>
     <build_type>ament_cmake</build_type>
