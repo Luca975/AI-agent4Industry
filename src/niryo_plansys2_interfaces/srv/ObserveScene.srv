@@ -2,3 +2,4 @@ std_msgs/Empty request
 ---
 SceneObject[] objects
 bool success
+string error_info

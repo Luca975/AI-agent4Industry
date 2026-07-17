@@ -5,6 +5,8 @@ string AREA=area
 
 string name
 string type
-string location 
+string location
+bool held # a piece with held = true is not AT any area, it is in the gripper
+string color
 
 #the location field is empty for the AREA type

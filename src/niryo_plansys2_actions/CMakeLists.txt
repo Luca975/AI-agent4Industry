@@ -42,6 +42,8 @@ target_include_directories(zone_map_server_node PRIVATE include)
 ament_target_dependencies(zone_map_server_node
   rclcpp
   niryo_plansys2_interfaces
+  niryo_env_interfaces
+  niryo_ned_ros2_interfaces
 )
 
 install(TARGETS
