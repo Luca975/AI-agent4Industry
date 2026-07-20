@@ -56,12 +56,12 @@ ZoneMapServer::ZoneMapServer() : Node("zone_map_server")
     );
 
     service_ = create_service<GetZone>(
-        "get_zone",
+        "/zone_map_server/get_zone",
         bind(&ZoneMapServer::handle_request, this, placeholders::_1, placeholders::_2)
     );
 
     observe_service_ = create_service<ObserveScene>(
-        "observe_scene",
+        "/zone_map_server/observe_scene",
         bind(&ZoneMapServer::handle_observe_req, this, placeholders::_1, placeholders::_2)
     );
 }
@@ -282,11 +282,10 @@ void ZoneMapServer::handle_observe_req(const shared_ptr<ObserveScene::Request> r
     arm.type = SceneObject::ROBOT;
     arm.held = false;
     arm.color = "";
-    arm.location = resolve_zone(arm_position_);
+    const string arm_zone = resolve_zone(arm_position_);
+    arm.location = arm_zone.empty() ? SOME_PLACE : arm_zone;
 
-    if (arm.location.empty()){
-        RCLCPP_WARN(get_logger(), "Arm '%s' is outside every zone",arm_name_.c_str());
-    }
+    RCLCPP_DEBUG(get_logger(),"Arm '%s' location: '%s'",arm_name_.c_str(), arm.location.c_str());
 
     response -> objects.push_back(arm);
 

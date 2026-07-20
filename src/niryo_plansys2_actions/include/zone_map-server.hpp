@@ -74,4 +74,7 @@ class ZoneMapServer : public Node
         double zone_thresholds;
         double grasp_threshold_;
         double staleness_threshold_;
+
+        /*This is used when the arm is in none fo the real areas*/
+        static constexpr const char* SOME_PLACE = "some_place";
 };
