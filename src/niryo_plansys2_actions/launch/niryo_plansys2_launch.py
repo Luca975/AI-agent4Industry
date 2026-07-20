@@ -41,7 +41,8 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'zones_file': os.path.join(pkg_dir, 'config', 'zones.csv'),
-            'zone_thresholds': 0.15
+            'zone_thresholds': 0.15,
+            'class_to_type':['cube:piece', 'person:human'],
             }])
 
     move_cmd = Node(

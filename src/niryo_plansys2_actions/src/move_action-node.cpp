@@ -5,7 +5,7 @@
 using namespace std::placeholders;
 
 moveAction::moveAction() : ActionExecutorClient("move",250ms) {
-    zone_client_ = create_client<GetZone>("get_zone");
+    zone_client_ = create_client<GetZone>("/zone_map_server/get_zone");
     move_client_ = rclcpp_action::create_client<RobotMove>(this, "/arm_1/niryo_robot_arm_commander/robot_action");
 
     command_sent_ = false;

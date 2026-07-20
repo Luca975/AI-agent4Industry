@@ -19,11 +19,18 @@ def observe_scene(runtime: ToolRuntime[AgentContext]) -> str:
     
 
     lines = []
-    for name,type_, location in objects:
-        if location:
-            lines.append(f"{name} ({type_}) -> {location}")
-        else:
-            lines.append(f"{name} ({type_})")
+    for name,type_, location, held, color in objects:
+        descr = f"{name} ({type_}"
+        if color:
+            descr += f", {color}"
+        descr += ")"
+
+        if held:
+            descr += " -> held by the arm"
+        elif location:
+            descr += f" -> {location}"
+        
+        lines.append(descr)
     
     return "Objects in the scene:\n" + "\n".join(lines)
 
