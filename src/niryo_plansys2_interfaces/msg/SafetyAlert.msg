@@ -1,0 +1,3 @@
+string action_full_name
+bool blocked
+string target

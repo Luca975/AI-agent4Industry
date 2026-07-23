@@ -1,0 +1,4 @@
+string node
+---
+bool clear
+bool success

@@ -15,7 +15,7 @@ ZoneMapServer::ZoneMapServer() : Node("zone_map_server")
     declare_parameter("class_to_type", vector<string>{});
     declare_parameter("waypoint_offsets", vector<double>{0.02, 0.22});
     declare_parameter("waypoint_height",0.35);
-    declare_parameter("human_radius", 0.35);
+    declare_parameter("human_radius", 0.08);
     declare_parameter("path_clearance", 0.08);
 
     string csv_path = get_parameter("zones_file").as_string();
@@ -78,6 +78,10 @@ ZoneMapServer::ZoneMapServer() : Node("zone_map_server")
 
     check_path_service_ = create_service<CheckPath>("/zone_map_server/check_path",
         bind(&ZoneMapServer::handle_check_path, this, placeholders::_1, placeholders::_2)
+    );
+
+    check_node_service_ = create_service<CheckNode>("/zone_map_server/check_node",
+        bind(&ZoneMapServer::handle_check_node, this, placeholders::_1, placeholders::_2)
     );
 }
 
@@ -330,6 +334,30 @@ string ZoneMapServer::check_freshness() const
     return "";
 }
 
+
+bool ZoneMapServer::is_node_clear(const string& node) const
+{
+    auto it = zones_.find(node);
+    if (it == zones_.end())
+        return false;
+    
+    for (const auto& [name, item] : objects_){
+        if (item.type != SceneObject::HUMAN)
+            continue;
+        
+        double dx = item.center.x - it->second.position.x;
+        double dy = item.center.y - it->second.position.y;
+
+        if (sqrt(dx*dx + dy*dy) <= human_radius_){
+            RCLCPP_WARN(get_logger(), "Human '%s' occupies node %s",
+            name.c_str(), node.c_str());
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool ZoneMapServer::is_path_clear(const string& from, const string& to)const
 {
     auto it_a = zones_.find(from);
@@ -477,6 +505,19 @@ void ZoneMapServer::handle_check_path(const shared_ptr<CheckPath::Request> reque
     response->clear = is_path_clear(request->from_node, request->to_node);
     response->success = true;
     }
+
+void ZoneMapServer::handle_check_node(const shared_ptr<CheckNode::Request> request, shared_ptr<CheckNode::Response> response)
+{
+    if (zones_.count(request->node) == 0){
+        RCLCPP_WARN(get_logger(), "check_node: unknown node '%s'", request->node.c_str());
+        response->success = false;
+        response->clear = false;
+        return;
+    }
+
+    response->clear = is_node_clear(request->node);
+    response->success = true;   
+}
 
 int main(int argc, char **argv)
 {

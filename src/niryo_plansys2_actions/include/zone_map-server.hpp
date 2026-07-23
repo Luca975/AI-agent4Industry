@@ -6,6 +6,8 @@
 #include "niryo_plansys2_interfaces/msg/scene_object.hpp"
 #include "niryo_plansys2_interfaces/msg/scene_path.hpp"
 #include "niryo_plansys2_interfaces/srv/check_path.hpp"
+#include "niryo_plansys2_interfaces/srv/check_node.hpp"
+
 #include "niryo_env_interfaces/msg/env_scene.hpp"
 #include "niryo_env_interfaces/msg/tool_status.hpp"
 #include "niryo_ned_ros2_interfaces/msg/robot_state.hpp"
@@ -25,10 +27,10 @@ using ObserveScene = niryo_plansys2_interfaces::srv::ObserveScene;
 using SceneObject = niryo_plansys2_interfaces::msg::SceneObject;
 using ScenePath = niryo_plansys2_interfaces::msg::ScenePath;
 using CheckPath = niryo_plansys2_interfaces::srv::CheckPath;
+using CheckNode = niryo_plansys2_interfaces::srv::CheckNode;
 using EnvScene = niryo_env_interfaces::msg::EnvScene;
 using ToolStatus = niryo_env_interfaces::msg::ToolStatus;
 using RobotState = niryo_ned_ros2_interfaces::msg::RobotState;
-
 
 
 struct SceneItem{
@@ -54,10 +56,12 @@ class ZoneMapServer : public Node
 
         void build_arcs();
         bool is_path_clear(const string& from, const string& to) const;
+        bool is_node_clear(const string& node) const;
 
         void handle_request(const shared_ptr<GetZone::Request> request, shared_ptr<GetZone::Response> response);
         void handle_observe_req(const shared_ptr<ObserveScene::Request> request, shared_ptr<ObserveScene::Response> response);
         void handle_check_path(const shared_ptr<CheckPath::Request> request, shared_ptr<CheckPath::Response> response);
+        void handle_check_node(const shared_ptr<CheckNode::Request> request, shared_ptr<CheckNode::Response> response);
         
         string resolve_zone(const geometry_msgs::msg::Point& p, const string& locatable_type) const;
         string resolve_held() const;
@@ -66,6 +70,7 @@ class ZoneMapServer : public Node
         Service<GetZone>::SharedPtr service_;
         Service<ObserveScene>::SharedPtr observe_service_;
         Service<CheckPath>::SharedPtr check_path_service_;
+        Service<CheckNode>::SharedPtr check_node_service_;
 
         Subscription<EnvScene>::SharedPtr scene_sub_;
         Subscription<ToolStatus>::SharedPtr tool_sub_;

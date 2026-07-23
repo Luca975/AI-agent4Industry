@@ -11,6 +11,7 @@
   <depend>rclcpp</depend>
   <depend>rclcpp_action</depend>
   <depend>plansys2_executor</depend>
+  <depend>plansys2_msgs</depend>
   <depend>niryo_ned_ros2_interfaces</depend>
   <depend>niryo_plansys2_interfaces</depend>
   <depend>lifecycle_msgs</depend>

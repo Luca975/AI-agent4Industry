@@ -5,6 +5,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(plansys2_executor REQUIRED)
+find_package(plansys2_msgs REQUIRED)
 find_package(niryo_ned_ros2_interfaces REQUIRED)
 find_package(niryo_plansys2_interfaces REQUIRED)
 find_package(lifecycle_msgs REQUIRED)
@@ -46,11 +47,20 @@ ament_target_dependencies(zone_map_server_node
   niryo_ned_ros2_interfaces
 )
 
+add_executable(safe_monitor_node src/safe_monitor.cpp)
+target_include_directories(safe_monitor_node PRIVATE include)
+ament_target_dependencies(safe_monitor_node
+  rclcpp
+  plansys2_msgs
+  niryo_plansys2_interfaces
+)
+
 install(TARGETS
   move_action_node
   pick_action_node
   place_action_node
   zone_map_server_node
+  safe_monitor_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
