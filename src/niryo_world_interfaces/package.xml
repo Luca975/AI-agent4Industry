@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>niryo_plansys2_interfaces</name>
+  <name>niryo_world_interfaces</name>
   <version>0.0.0</version>
   <maintainer email="lu.cardellicchio@studenti.unina.it">Luca</maintainer>
   <description>Custom ROS2 interfaces for Niryo PlanSys2 integration</description>

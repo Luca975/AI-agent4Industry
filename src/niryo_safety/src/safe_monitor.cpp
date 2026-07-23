@@ -16,8 +16,8 @@ SafeMonitor::SafeMonitor() : Node("safe_monitor")
 
     alert_pub_ = create_publisher<SafetyAlert>("/safety_alert", 10);
 
-    check_path_client_ = create_client<CheckPath>("/zone_map_server/check_path");
-    check_node_client_ = create_client<CheckNode>("/zone_map_server/check_node");
+    check_path_client_ = create_client<CheckPath>("/world_model_server/check_path");
+    check_node_client_ = create_client<CheckNode>("/world_model_server/check_node");
 
     timer_ = create_wall_timer(
         chrono::duration<double>(1.0 / rate),

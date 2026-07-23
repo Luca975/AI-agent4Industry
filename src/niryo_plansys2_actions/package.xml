@@ -13,7 +13,7 @@
   <depend>plansys2_executor</depend>
   <depend>plansys2_msgs</depend>
   <depend>niryo_ned_ros2_interfaces</depend>
-  <depend>niryo_plansys2_interfaces</depend>
+  <depend>niryo_world_interfaces</depend>
   <depend>lifecycle_msgs</depend>
   <depend>niryo_env_interfaces</depend>
 

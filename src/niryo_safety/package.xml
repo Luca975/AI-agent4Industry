@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>niryo_safety</name>
+  <version>0.0.1</version>
+  <description>
+    Runtime safety supervision for the Niryo Ned2 planning stack. Watches the action
+    currently dispatched by PlanSys2 and polls the world model for the invariant that
+    action depends on (path clearance for move, node clearance for pick and place),
+    raising an alert when it is violated. The monitor is a sensor: it never commands
+    the arm, the action performer owns the motion goal.
+  </description>
+  <maintainer email="lu.cardellicchio@studenti.unina.it">Luca</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>plansys2_msgs</depend>
+  <depend>niryo_world_interfaces</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

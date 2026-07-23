@@ -2,9 +2,9 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "plansys2_msgs/msg/action_execution_info.hpp"
-#include "niryo_plansys2_interfaces/msg/safety_alert.hpp"
-#include "niryo_plansys2_interfaces/srv/check_path.hpp"
-#include "niryo_plansys2_interfaces/srv/check_node.hpp"
+#include "niryo_world_interfaces/msg/safety_alert.hpp"
+#include "niryo_world_interfaces/srv/check_path.hpp"
+#include "niryo_world_interfaces/srv/check_node.hpp"
 
 #include <string>
 #include <vector>
@@ -13,9 +13,9 @@ using namespace rclcpp;
 using namespace std;
 
 using ActionExecutionInfo = plansys2_msgs::msg::ActionExecutionInfo;
-using SafetyAlert = niryo_plansys2_interfaces::msg::SafetyAlert;
-using CheckPath = niryo_plansys2_interfaces::srv::CheckPath;
-using CheckNode = niryo_plansys2_interfaces::srv::CheckNode;
+using SafetyAlert = niryo_world_interfaces::msg::SafetyAlert;
+using CheckPath = niryo_world_interfaces::srv::CheckPath;
+using CheckNode = niryo_world_interfaces::srv::CheckNode;
 
 
 class SafeMonitor : public Node

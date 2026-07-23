@@ -1,12 +1,12 @@
 #pragma once
 
 #include "rclcpp/rclcpp.hpp"
-#include "niryo_plansys2_interfaces/srv/get_zone.hpp"
-#include "niryo_plansys2_interfaces/srv/observe_scene.hpp"
-#include "niryo_plansys2_interfaces/msg/scene_object.hpp"
-#include "niryo_plansys2_interfaces/msg/scene_path.hpp"
-#include "niryo_plansys2_interfaces/srv/check_path.hpp"
-#include "niryo_plansys2_interfaces/srv/check_node.hpp"
+#include "niryo_world_interfaces/srv/get_zone.hpp"
+#include "niryo_world_interfaces/srv/observe_scene.hpp"
+#include "niryo_world_interfaces/msg/scene_object.hpp"
+#include "niryo_world_interfaces/msg/scene_path.hpp"
+#include "niryo_world_interfaces/srv/check_path.hpp"
+#include "niryo_world_interfaces/srv/check_node.hpp"
 
 #include "niryo_env_interfaces/msg/env_scene.hpp"
 #include "niryo_env_interfaces/msg/tool_status.hpp"
@@ -22,12 +22,12 @@
 using namespace rclcpp;
 using namespace std;
 
-using GetZone = niryo_plansys2_interfaces::srv::GetZone;
-using ObserveScene = niryo_plansys2_interfaces::srv::ObserveScene;
-using SceneObject = niryo_plansys2_interfaces::msg::SceneObject;
-using ScenePath = niryo_plansys2_interfaces::msg::ScenePath;
-using CheckPath = niryo_plansys2_interfaces::srv::CheckPath;
-using CheckNode = niryo_plansys2_interfaces::srv::CheckNode;
+using GetZone = niryo_world_interfaces::srv::GetZone;
+using ObserveScene = niryo_world_interfaces::srv::ObserveScene;
+using SceneObject = niryo_world_interfaces::msg::SceneObject;
+using ScenePath = niryo_world_interfaces::msg::ScenePath;
+using CheckPath = niryo_world_interfaces::srv::CheckPath;
+using CheckNode = niryo_world_interfaces::srv::CheckNode;
 using EnvScene = niryo_env_interfaces::msg::EnvScene;
 using ToolStatus = niryo_env_interfaces::msg::ToolStatus;
 using RobotState = niryo_ned_ros2_interfaces::msg::RobotState;
@@ -41,10 +41,10 @@ struct SceneItem{
 };
 
 
-class ZoneMapServer : public Node
+class WorldModelServer : public Node
 {
     public:
-        ZoneMapServer();
+        WorldModelServer();
 
     private:
         void read_zones(const string& filename);

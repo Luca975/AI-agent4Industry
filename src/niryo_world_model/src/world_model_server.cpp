@@ -1,11 +1,11 @@
 #include <fstream>
 #include <sstream>
 #include <cmath>
-#include "zone_map-server.hpp"
+#include "world_model_server.hpp"
 
 
 
-ZoneMapServer::ZoneMapServer() : Node("zone_map_server")
+WorldModelServer::WorldModelServer() : Node("world_model_server")
 {
     declare_parameter("zones_file", "");
     declare_parameter("zone_thresholds", 0.15);
@@ -50,43 +50,43 @@ ZoneMapServer::ZoneMapServer() : Node("zone_map_server")
 
     scene_sub_ = create_subscription<EnvScene>(
         "/env/scene",10,
-        bind(&ZoneMapServer::on_scene, this, placeholders::_1)
+        bind(&WorldModelServer::on_scene, this, placeholders::_1)
     );
 
     QoS tool_qos(1);
     tool_qos.transient_local();
     tool_sub_ = create_subscription<ToolStatus>(
         "/arm_1/tool_status", tool_qos,
-        bind(&ZoneMapServer::on_tool_status, this, placeholders::_1)
+        bind(&WorldModelServer::on_tool_status, this, placeholders::_1)
     );
     
     // TODO: verify the driver's QoS
     arm_sub_ = create_subscription<RobotState>(
         "/arm_1/niryo_robot/robot_state", SensorDataQoS(),
-        bind(&ZoneMapServer::on_robot_state, this, placeholders::_1)
+        bind(&WorldModelServer::on_robot_state, this, placeholders::_1)
     );
 
     service_ = create_service<GetZone>(
-        "/zone_map_server/get_zone",
-        bind(&ZoneMapServer::handle_request, this, placeholders::_1, placeholders::_2)
+        "/world_model_server/get_zone",
+        bind(&WorldModelServer::handle_request, this, placeholders::_1, placeholders::_2)
     );
 
     observe_service_ = create_service<ObserveScene>(
-        "/zone_map_server/observe_scene",
-        bind(&ZoneMapServer::handle_observe_req, this, placeholders::_1, placeholders::_2)
+        "/world_model_server/observe_scene",
+        bind(&WorldModelServer::handle_observe_req, this, placeholders::_1, placeholders::_2)
     );
 
-    check_path_service_ = create_service<CheckPath>("/zone_map_server/check_path",
-        bind(&ZoneMapServer::handle_check_path, this, placeholders::_1, placeholders::_2)
+    check_path_service_ = create_service<CheckPath>("/world_model_server/check_path",
+        bind(&WorldModelServer::handle_check_path, this, placeholders::_1, placeholders::_2)
     );
 
-    check_node_service_ = create_service<CheckNode>("/zone_map_server/check_node",
-        bind(&ZoneMapServer::handle_check_node, this, placeholders::_1, placeholders::_2)
+    check_node_service_ = create_service<CheckNode>("/world_model_server/check_node",
+        bind(&WorldModelServer::handle_check_node, this, placeholders::_1, placeholders::_2)
     );
 }
 
 
-void ZoneMapServer::read_zones(const string& filename)
+void WorldModelServer::read_zones(const string& filename)
 {
     ifstream file(filename);
 
@@ -132,7 +132,7 @@ void ZoneMapServer::read_zones(const string& filename)
     }
 }
 
-void ZoneMapServer::build_arcs()
+void WorldModelServer::build_arcs()
 {
     for (const auto& [name, zone] : zones_){
         if (zone.type == SceneObject::WAYPOINT && name != HOME_NODE)
@@ -144,7 +144,7 @@ void ZoneMapServer::build_arcs()
 }
 
 
-void ZoneMapServer::generate_waypoints()
+void WorldModelServer::generate_waypoints()
 {
     if (stations_.size() < 2){
         RCLCPP_WARN(get_logger(), "Fewer than two stations: no waypoint generated");
@@ -205,7 +205,7 @@ void ZoneMapServer::generate_waypoints()
     }
 }
 
-void ZoneMapServer::on_scene(const EnvScene::SharedPtr msg)
+void WorldModelServer::on_scene(const EnvScene::SharedPtr msg)
 {
     map<string, SceneItem> fresh;
 
@@ -233,18 +233,18 @@ void ZoneMapServer::on_scene(const EnvScene::SharedPtr msg)
     last_scene_ = now();
 }
 
-void ZoneMapServer::on_tool_status(const ToolStatus::SharedPtr msg)
+void WorldModelServer::on_tool_status(const ToolStatus::SharedPtr msg)
 {
     gripper_closed_ = msg->closed;
     tool_received_=true;
 }
-void ZoneMapServer::on_robot_state(const RobotState::SharedPtr msg)
+void WorldModelServer::on_robot_state(const RobotState::SharedPtr msg)
 {
     arm_position_ = msg->position;
     last_arm_ = now();
 }
 
-string ZoneMapServer::resolve_zone(const geometry_msgs::msg::Point& p, const string& locatable_type) const
+string WorldModelServer::resolve_zone(const geometry_msgs::msg::Point& p, const string& locatable_type) const
 {
     const bool areas_only = (locatable_type == SceneObject::PIECE);
     const bool is_human = (locatable_type == SceneObject::HUMAN);
@@ -272,7 +272,7 @@ string ZoneMapServer::resolve_zone(const geometry_msgs::msg::Point& p, const str
     return (best_dist <= zone_thresholds) ? best_zone : "";
 }
 
-string ZoneMapServer::resolve_held() const
+string WorldModelServer::resolve_held() const
 {
     if (!gripper_closed_)
     {
@@ -306,7 +306,7 @@ string ZoneMapServer::resolve_held() const
     return held;
 }
 
-string ZoneMapServer::check_freshness() const
+string WorldModelServer::check_freshness() const
 {
     auto t = now();
 
@@ -335,7 +335,7 @@ string ZoneMapServer::check_freshness() const
 }
 
 
-bool ZoneMapServer::is_node_clear(const string& node) const
+bool WorldModelServer::is_node_clear(const string& node) const
 {
     auto it = zones_.find(node);
     if (it == zones_.end())
@@ -358,7 +358,7 @@ bool ZoneMapServer::is_node_clear(const string& node) const
     return true;
 }
 
-bool ZoneMapServer::is_path_clear(const string& from, const string& to)const
+bool WorldModelServer::is_path_clear(const string& from, const string& to)const
 {
     auto it_a = zones_.find(from);
     auto it_b = zones_.find(to);
@@ -399,7 +399,7 @@ bool ZoneMapServer::is_path_clear(const string& from, const string& to)const
     return true;
 }
 
-void ZoneMapServer::handle_request(const shared_ptr<GetZone::Request> request, shared_ptr<GetZone::Response> response)
+void WorldModelServer::handle_request(const shared_ptr<GetZone::Request> request, shared_ptr<GetZone::Response> response)
 {
     auto it = zones_.find(request->zone);
     if(it != zones_.end()){
@@ -411,7 +411,7 @@ void ZoneMapServer::handle_request(const shared_ptr<GetZone::Request> request, s
     }
 }
 
-void ZoneMapServer::handle_observe_req(const shared_ptr<ObserveScene::Request> request, shared_ptr<ObserveScene::Response> response)
+void WorldModelServer::handle_observe_req(const shared_ptr<ObserveScene::Request> request, shared_ptr<ObserveScene::Response> response)
 {
     (void)request;
 
@@ -492,7 +492,7 @@ void ZoneMapServer::handle_observe_req(const shared_ptr<ObserveScene::Request> r
     response->error_info = "";
 }
 
-void ZoneMapServer::handle_check_path(const shared_ptr<CheckPath::Request> request, shared_ptr<CheckPath::Response> response)
+void WorldModelServer::handle_check_path(const shared_ptr<CheckPath::Request> request, shared_ptr<CheckPath::Response> response)
 {
     if (zones_.count(request->from_node) == 0 || zones_.count(request->to_node) == 0){
         RCLCPP_WARN(get_logger(), "check_path: unknown node '%s' or '%s'",
@@ -506,7 +506,7 @@ void ZoneMapServer::handle_check_path(const shared_ptr<CheckPath::Request> reque
     response->success = true;
     }
 
-void ZoneMapServer::handle_check_node(const shared_ptr<CheckNode::Request> request, shared_ptr<CheckNode::Response> response)
+void WorldModelServer::handle_check_node(const shared_ptr<CheckNode::Request> request, shared_ptr<CheckNode::Response> response)
 {
     if (zones_.count(request->node) == 0){
         RCLCPP_WARN(get_logger(), "check_node: unknown node '%s'", request->node.c_str());
@@ -522,7 +522,7 @@ void ZoneMapServer::handle_check_node(const shared_ptr<CheckNode::Request> reque
 int main(int argc, char **argv)
 {
     init(argc, argv);
-    auto node = make_shared<ZoneMapServer>();
+    auto node = make_shared<WorldModelServer>();
     spin(node);
     shutdown();
     return 0;

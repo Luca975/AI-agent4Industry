@@ -2,7 +2,7 @@
 # from rclpy.node import Node
 
 from plansys2_lib.base import PlanSys2ClientBase
-from niryo_plansys2_interfaces.srv import ObserveScene
+from niryo_world_interfaces.srv import ObserveScene
 from std_msgs.msg import Empty
 
 class SceneObserver(PlanSys2ClientBase):

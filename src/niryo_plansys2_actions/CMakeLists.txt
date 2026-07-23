@@ -7,7 +7,7 @@ find_package(rclcpp_action REQUIRED)
 find_package(plansys2_executor REQUIRED)
 find_package(plansys2_msgs REQUIRED)
 find_package(niryo_ned_ros2_interfaces REQUIRED)
-find_package(niryo_plansys2_interfaces REQUIRED)
+find_package(niryo_world_interfaces REQUIRED)
 find_package(lifecycle_msgs REQUIRED)
 find_package(niryo_env_interfaces REQUIRED)
 
@@ -18,7 +18,7 @@ ament_target_dependencies(move_action_node
   rclcpp_action
   plansys2_executor
   niryo_ned_ros2_interfaces
-  niryo_plansys2_interfaces
+  niryo_world_interfaces
   lifecycle_msgs
 )
 
@@ -38,33 +38,15 @@ ament_target_dependencies(place_action_node
   niryo_env_interfaces
 )
 
-add_executable(zone_map_server_node src/zone_map-server.cpp)
-target_include_directories(zone_map_server_node PRIVATE include)
-ament_target_dependencies(zone_map_server_node
-  rclcpp
-  niryo_plansys2_interfaces
-  niryo_env_interfaces
-  niryo_ned_ros2_interfaces
-)
-
-add_executable(safe_monitor_node src/safe_monitor.cpp)
-target_include_directories(safe_monitor_node PRIVATE include)
-ament_target_dependencies(safe_monitor_node
-  rclcpp
-  plansys2_msgs
-  niryo_plansys2_interfaces
-)
 
 install(TARGETS
   move_action_node
   pick_action_node
   place_action_node
-  zone_map_server_node
-  safe_monitor_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
-install(DIRECTORY config launch
+install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}
 )
 

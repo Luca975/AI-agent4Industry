@@ -5,7 +5,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "plansys2_executor/ActionExecutorClient.hpp"
-#include "niryo_plansys2_interfaces/srv/get_zone.hpp"
+#include "niryo_world_interfaces/srv/get_zone.hpp"
 #include "niryo_ned_ros2_interfaces/action/robot_move.hpp"
 
 using namespace rclcpp;
@@ -13,7 +13,7 @@ using namespace rclcpp_action;
 using namespace plansys2;
 using namespace std;
 
-using GetZone=niryo_plansys2_interfaces::srv::GetZone;
+using GetZone=niryo_world_interfaces::srv::GetZone;
 using RobotMove=niryo_ned_ros2_interfaces::action::RobotMove;
 
 class moveAction : public ActionExecutorClient{

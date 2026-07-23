@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(niryo_plansys2_interfaces)
+project(niryo_world_interfaces)
 
 find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
