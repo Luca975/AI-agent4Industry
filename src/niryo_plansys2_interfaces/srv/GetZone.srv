@@ -2,4 +2,5 @@ string zone
 ---
 geometry_msgs/Point position
 niryo_ned_ros2_interfaces/RPY rpy
+string type
 bool success

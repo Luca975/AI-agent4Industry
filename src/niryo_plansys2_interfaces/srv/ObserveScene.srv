@@ -1,5 +1,6 @@
 std_msgs/Empty request
 ---
 SceneObject[] objects
+ScenePath[] paths
 bool success
 string error_info
