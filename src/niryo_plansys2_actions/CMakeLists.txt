@@ -23,19 +23,23 @@ ament_target_dependencies(move_action_node
 )
 
 add_executable(pick_action_node src/pick_action-node.cpp)
+target_include_directories(pick_action_node PRIVATE include)
 ament_target_dependencies(pick_action_node
   rclcpp
   plansys2_executor
   lifecycle_msgs
   niryo_env_interfaces
+  niryo_world_interfaces
 )
 
 add_executable(place_action_node src/place_action-node.cpp)
+target_include_directories(place_action_node PRIVATE include)
 ament_target_dependencies(place_action_node
   rclcpp
   plansys2_executor
   lifecycle_msgs
   niryo_env_interfaces
+  niryo_world_interfaces
 )
 
 
