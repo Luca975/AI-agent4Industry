@@ -7,11 +7,10 @@ from langgraph.types import Command
 
 @tool
 def observe_scene(runtime: ToolRuntime[AgentContext]) -> str:
-    """Observe the current scene and return the detected objects in symbolic form,
-    ready to build the PDDL problem. Use this tool at the beginning, before generating the problem,
-    to know which objects are present, their type and location."""
+    """Observe the current scene and return the detected objects and the graph of transit path in symbolic form,
+    ready to build the PDDL problem. Use this tool at the beginning, before generating the problem."""
 
-    success, objects, info = runtime.context.scene_client.observe_scene()
+    success, objects, paths, info = runtime.context.scene_client.observe_scene()
     if not success:
         return f"Error while observing the scene: {info}"
     if not objects:
@@ -32,8 +31,20 @@ def observe_scene(runtime: ToolRuntime[AgentContext]) -> str:
         
         lines.append(descr)
     
-    return "Objects in the scene:\n" + "\n".join(lines)
+    out = "Objects in the scene:\n" + "\n".join(lines)
 
+    if paths:
+        arc_lines = []
+        for from_node, to_node, clear in paths:
+            fact = f"(connected {from_node} {to_node})"
+            if clear:
+                fact += f"(clean path {from_node} {to_node})"
+            arc_lines.append(fact);
+
+        out += ("\n\nGraph facts (copy these verbatim into :init):\n"
+                + "\n".join(arc_lines))
+
+    return out
 
 @tool
 def get_domain(runtime: ToolRuntime[AgentContext]) -> str:

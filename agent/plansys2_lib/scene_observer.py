@@ -9,9 +9,9 @@ class SceneObserver(PlanSys2ClientBase):
 
     def __init__(self)->None:
         super().__init__('agent_scene_observer_client')
-        self._observe_scene_client = self.create_client(ObserveScene, '/zone_map_server/observe_scene', callback_group=self.cb_group)
+        self._observe_scene_client = self.create_client(ObserveScene, '/world_model_server/observe_scene', callback_group=self.cb_group)
 
-    def observe_scene(self, timeout_sec:float=5.0)->tuple[bool, list, str]:
+    def observe_scene(self, timeout_sec:float=5.0)->tuple[bool, list, list, str]:
         # client = self._observe_scene_client
 
         # if not client.wait_for_service(timeout_sec=timeout_sec):
@@ -31,12 +31,13 @@ class SceneObserver(PlanSys2ClientBase):
         if response is None:
             info=f"Service call to {self._observe_scene_client.srv_name} failed"
             self.get_logger().error(info)
-            return False, [], info
+            return False, [], [], info
         
         if not response.success:
             info = response.error_info or f"Service {self._observe_scene_client.srv_name} returned failure without error_info"
             self.get_logger().warn(info)
-            return False, [], info
+            return False, [], [], info
         
         objects = [(obj.name, obj.type, obj.location, obj.held, obj.color)for obj in response.objects]
-        return True, objects, ""
+        paths = [(p.from_node, p.to_node, p.clear)for p in response.paths]
+        return True, objects, paths, ""
