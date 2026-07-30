@@ -50,7 +50,9 @@ def main()->None:
         "messages" : [],
         "cur_problem" : None,
         "cur_plan":None,
-        "phase" : "idle"
+        "phase" : "idle",
+        "replan_count": 0,
+        "no_plan_count": 0
     }
 
     try:

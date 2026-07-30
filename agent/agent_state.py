@@ -8,4 +8,6 @@ class AgentState(TypedDict):
     cur_problem:Optional[str]
     cur_plan: Optional[list[PlanStep]]
     # found_plan:Optional[bool]
-    phase: Literal["idle","running","complete","failed"]
+    phase: Literal["idle","running","complete","replan", "emergency", "fault"]
+    replan_count : int
+    no_plan_count : int

@@ -269,7 +269,7 @@ string WorldModelServer::resolve_zone(const geometry_msgs::msg::Point& p, const 
         }
     }
     
-    return (best_dist <= zone_thresholds) ? best_zone : "";
+    return (best_dist <= threshold) ? best_zone : "";
 }
 
 string WorldModelServer::resolve_held() const

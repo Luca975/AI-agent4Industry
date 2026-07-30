@@ -36,9 +36,9 @@ def observe_scene(runtime: ToolRuntime[AgentContext]) -> str:
     if paths:
         arc_lines = []
         for from_node, to_node, clear in paths:
-            fact = f"(connected {from_node} {to_node})"
+            fact = f"(connected {from_node} {to_node}) "
             if clear:
-                fact += f"(clean path {from_node} {to_node})"
+                fact += f"(clean_path {from_node} {to_node})"
             arc_lines.append(fact);
 
         out += ("\n\nGraph facts (copy these verbatim into :init):\n"
@@ -91,12 +91,25 @@ def get_plan(runtime: ToolRuntime[AgentContext]):
         return "No problem generated yet"
     
     success, plan, info = runtime.context.planner_client.get_plan(domain, problem_str)
+
     if not success:
-        return f"No plan found: {info}"
+        count = runtime.state.get("no_plan_count",0) + 1
+        return Command(
+            update={
+                "no_plan_count":count,
+                "messages":[
+                    ToolMessage(
+                        content=f"No plan found: {info}",
+                        tool_call_id=runtime.tool_call_id
+                    )
+                ]
+            }
+        )
     
     return Command(
         update={
-            "cur_plan":plan,
+            "cur_plan": plan,
+            "no_plan_count": 0,
             "messages":[
                 ToolMessage(
                     content="Plan found: the problem is solvable",
