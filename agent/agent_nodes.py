@@ -199,9 +199,10 @@ def running_node(state: AgentState, runtime:Runtime[AgentContext])->AgentState:
         count = state.get("replan_count",0) +1
         if count <= MAX_REPLAN:
             return {
-                "messages":[AIMessage(content=(
-                    f"Move blocked ({message}). Re-observing and replanning "
-                    f"(attempt {count}/{MAX_REPLAN})."))],
+                "messages":[HumanMessage(content=(
+                    f"The plan was blocked: {message}. "
+                    f"Re-observe the scene and build a new plan "
+                    f"(replan attempt {count}/{MAX_REPLAN})."))],
                 "phase": "replan",
                 "replan_count": count,
                 "cur_plan" : None,

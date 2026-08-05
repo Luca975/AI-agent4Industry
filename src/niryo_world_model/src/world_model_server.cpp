@@ -349,7 +349,7 @@ bool WorldModelServer::is_node_clear(const string& node) const
         double dy = item.center.y - it->second.position.y;
 
         if (sqrt(dx*dx + dy*dy) <= human_radius_){
-            RCLCPP_WARN(get_logger(), "Human '%s' occupies node %s",
+            RCLCPP_DEBUG(get_logger(), "Human '%s' occupies node %s",
             name.c_str(), node.c_str());
             return false;
         }
@@ -390,7 +390,7 @@ bool WorldModelServer::is_path_clear(const string& from, const string& to)const
         double dy = item.center.y - py;        
 
         if (sqrt(dx*dx + dy*dy) < path_clearance_){
-            RCLCPP_WARN(get_logger(), "Human '%s' obstructs the path %s -> %s",
+            RCLCPP_DEBUG(get_logger(), "Human '%s' obstructs the path %s -> %s",
                 name.c_str(), from.c_str(), to.c_str());
             return false;
         }

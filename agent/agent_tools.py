@@ -36,9 +36,9 @@ def observe_scene(runtime: ToolRuntime[AgentContext]) -> str:
     if paths:
         arc_lines = []
         for from_node, to_node, clear in paths:
-            fact = f"(connected {from_node} {to_node}) "
+            fact = f"(connected {from_node} {to_node})"
             if clear:
-                fact += f"(clean_path {from_node} {to_node})"
+                fact += f" (clean_path {from_node} {to_node})"
             arc_lines.append(fact);
 
         out += ("\n\nGraph facts (copy these verbatim into :init):\n"

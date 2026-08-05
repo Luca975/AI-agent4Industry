@@ -11,14 +11,15 @@ def route_from_idle(state:AgentState)->str:
     last = state['messages'][-1].content.strip().lower()
     return "end" if last == "exit" else "llm"
 
-EXECUTE = False
 
 def route_from_llm(state:AgentState)->str:
     last=state["messages"][-1]
     if getattr(last,"tool_calls",None):
         return "tools"
     if state.get("cur_plan") is not None:
-        return "running" if EXECUTE else "idle"
+        return "running"
+    if state.get("no_plan_count",0) > 0:
+        return "emergency"
     return "idle"
 
 def route_from_running(state:AgentState)->str:
@@ -33,7 +34,7 @@ def route_from_running(state:AgentState)->str:
 
 def route_from_tools(state:AgentState)->str:
     if state.get("no_plan_count",0) >= MAX_NO_PLAN:
-        return "fault"
+        return "emergency"
     return "llm"
 
 
@@ -53,11 +54,12 @@ builder.add_conditional_edges("idle",route_from_idle,{
 builder.add_conditional_edges("llm",route_from_llm,{
     "tools":"tools",
     "idle":"idle",
-    "running":"running"
+    "running":"running",
+    "emergency":"emergency"
 })
 builder.add_conditional_edges("tools", route_from_tools, {
     "llm":"llm",
-    "fault":"idle"
+    "emergency":"emergency"
 })
 builder.add_conditional_edges("running", route_from_running, {
     "idle":"idle",

@@ -12,7 +12,7 @@ from plansys2_lib.domain_expert import DomainExpert
 from plansys2_lib.planner import Planner
 from plansys2_lib.scene_observer import SceneObserver
 from plansys2_lib.executor import Executor
-from plansys2_lib.arm_commander import ArmCommander
+#from plansys2_lib.arm_commander import ArmCommander
 
 def main()->None:
     rclpy.init()
@@ -22,7 +22,7 @@ def main()->None:
     planner_client = Planner()
     scene_client = SceneObserver()
     executor_client = Executor()
-    go_home_client = ArmCommander()
+#    go_home_client = ArmCommander()
 
     executor = MultiThreadedExecutor()
     executor.add_node(problem_client)
@@ -30,7 +30,7 @@ def main()->None:
     executor.add_node(planner_client)
     executor.add_node(scene_client)
     executor.add_node(executor_client)
-    executor.add_node(go_home_client)
+#    executor.add_node(go_home_client)
 
     spint_thread = threading.Thread(target=executor.spin, daemon=True)
     spint_thread.start()
@@ -40,8 +40,8 @@ def main()->None:
         domain_client = domain_client,
         scene_client = scene_client,
         planner_client = planner_client,
-        executor_client = executor_client,
-        home_pos_client=go_home_client
+        executor_client = executor_client
+#        home_pos_client=go_home_client
     )
 
     config = {"configurable" : {"thread_id" : "1"}}
@@ -69,13 +69,15 @@ def main()->None:
 
     finally:
         executor.shutdown()
+        spint_thread.join(timeout=5.0)
         problem_client.destroy_node()
         domain_client.destroy_node()
         planner_client.destroy_node()
         scene_client.destroy_node()
         executor_client.destroy_node()
-        go_home_client.destroy_node()
-        rclpy.shutdown()
+#        go_home_client.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

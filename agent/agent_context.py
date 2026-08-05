@@ -8,7 +8,7 @@ from plansys2_lib.planner import Planner
 from plansys2_lib.domain_expert import DomainExpert
 from plansys2_lib.scene_observer import SceneObserver
 from plansys2_lib.executor import Executor
-from plansys2_lib.arm_commander import ArmCommander
+#from plansys2_lib.arm_commander import ArmCommander
 
 @dataclass
 class AgentContext:
@@ -17,4 +17,4 @@ class AgentContext:
     domain_client: DomainExpert
     scene_client: SceneObserver
     executor_client:Executor
-    home_pos_client:ArmCommander
+#    home_pos_client:ArmCommander
