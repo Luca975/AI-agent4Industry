@@ -1,3 +1,11 @@
+/**
+ * @file place_action-node.hpp
+ * @brief PlanSys2 'place' performer with safety-aware suspend/abort.
+ * 
+ * Mirror of the pick performer: same three-state machine and the same
+ * rule that a persistent obstacle aborts rather than reroutes. The gripper
+ * motion is timed stub (see the .cpp TODOs)
+ */
 #pragma once
 
 #include <string>

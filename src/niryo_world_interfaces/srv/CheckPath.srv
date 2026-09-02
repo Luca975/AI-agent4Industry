@@ -1,5 +1,8 @@
+# Is the arc from_node->to_node currently free of humans? Served by
+# world_model_server and polled by safe_monitor while a move is executing.
+
 string from_node
 string to_node
 ---
-bool clear
-bool success
+bool clear      #false if a human obstructs the segment
+bool success    #false if the either node is unknown

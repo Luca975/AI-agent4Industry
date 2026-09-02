@@ -4,10 +4,11 @@
   <name>niryo_world_model</name>
   <version>0.0.1</version>
   <description>
-    Symbolic world model for the Niryo Ned2 planning stack. Keeps the static map of
-    stations, generates the transit waypoints and the graph topology, and grounds the
-    perceived scene into the symbolic facts the PDDL problem is built from
-    (object locations, node occupancy, path clearance).
+    Symbolic world model for the Niryo Ned2 planning stack. Holds the static map of
+    stations, generates the transit waypoints and the graph topology, and fuses the
+    perceived scene with arm and gripper state into symbolic facts. Serves both a one-shot scene
+    snapshot for building the PDDL problem and the continuous human occupancy and path clearance
+    queries the safety monitor polls at runtime
   </description>
   <maintainer email="lu.cardellicchio@studenti.unina.it">Luca</maintainer>
   <license>BSD-3-Clause</license>
@@ -18,6 +19,7 @@
   <depend>niryo_world_interfaces</depend>
   <depend>niryo_env_interfaces</depend>
   <depend>niryo_ned_ros2_interfaces</depend>
+  <depend>geometry_msgs</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

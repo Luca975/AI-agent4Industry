@@ -8,6 +8,8 @@ from agent_types import PlanStep
 from plansys2_lib.base import PlanSys2ClientBase
 
 class Executor(PlanSys2ClientBase):
+    """Agent-side client that dispatches a plan to PlanSys2 and reports which action broke it"""
+
 
     def __init__(self)->None:
         super().__init__('agent_executor_client')
@@ -29,6 +31,12 @@ class Executor(PlanSys2ClientBase):
     @staticmethod
     def _failed_action(result) -> tuple[str, str]:
 
+        """Pick the action that broke the plan: the FAILED one, or the first CANCELLED if none is FAILED.
+        
+        FAILED wins because it is the real cause; a CANCELLED action is usually a side effect of the plan
+        being torn down. Returns (action, message) so the graph can route replan vs emergency, or ("", reason)
+        if nothing is marked"""
+
         failed = None
         cancelled = None
         for info in result.action_execution_status:
@@ -44,6 +52,8 @@ class Executor(PlanSys2ClientBase):
         return "", "Plan failed but no action is marked FAILED or CANCELLED"
 
     def execute_plan(self, plan_steps:list[PlanStep], timeout_sec:float = 120.0)->tuple[bool, str, str]:
+        """Dispatch a plan and block until it finishes. Returns (ok, failed_action, message):
+        the offending action and its status message on failure, empty strings on success"""
 
         if not self._execute_plan_client.wait_for_server(timeout_sec=5.0):
             info = "Action server /execute_plan not available"

@@ -4,16 +4,18 @@
   <name>niryo_env_perception</name>
   <version>0.0.1</version>
   <description>
-    Environmental perception for AI-agent4Industry: publishes what the vision
-    stage sees as vision_msgs/Detection3DArray.
+    Environmental perception for AI-agent4Industry: publishes the detected scene
+    on /env/scene as niryo_env_interfaces/EnvScene. Currently a mock that reads
+    a JSON scene description at a fixed rate; placeholder for the real vision model.
   </description>
   <maintainer email="lu.cardellicchio@studenti.unina.it">Luca</maintainer>
   <license>BSD-3-Clause</license>
 
+  <exec_depend>niryo_env_interfaces</exec_depend>
   <exec_depend>rclpy</exec_depend>
-  <exec_depend>vision_msgs</exec_depend>
+  <!--<exec_depend>vision_msgs</exec_depend> -->
   <exec_depend>geometry_msgs</exec_depend>
-  <exec_depend>std_msgs</exec_depend>
+  <!--<exec_depend>std_msgs</exec_depend> -->
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

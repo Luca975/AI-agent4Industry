@@ -3,7 +3,9 @@
   <name>niryo_world_interfaces</name>
   <version>0.0.0</version>
   <maintainer email="lu.cardellicchio@studenti.unina.it">Luca</maintainer>
-  <description>Custom ROS2 interfaces for Niryo PlanSys2 integration</description>
+  <description>Custom ROS2 message and service definitions shared by the Niryo world-model and
+  safety layers; scene snapshot (ObserveScene, SceneObject, ScenePath), zone lookup (GetZone),
+  runtime human occupancy/clearance checks (CheckNode, CheckPath) and safety alerts (SafetyAlert). </description>
   <license>BSD-3-Clause</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

@@ -34,6 +34,8 @@ void moveAction::do_work(){
 
     if (state_ == State::WAITING){
 
+        //Micro-wait expired with the obstacle still there: give up on ?to and
+        //go back to ?from. The failure is issued later, from RETURNING's result.
         if ((now() - wait_start_).seconds() > wait_timeout_){
             RCLCPP_WARN(get_logger(),
                 "Obstacle on '%s' persists: returning to '%s'", target_.c_str(), from_.c_str());
@@ -75,6 +77,9 @@ void moveAction::send_move_command(GetZone::Response::SharedPtr response){
     auto goal = RobotMove::Goal();
     goal.cmd = cmd;
 
+    // Each dispatch gets a fresh sequence number. Both callbacks capture it and
+    // ignore anything that arrives for a goal we have since superseded (e.g. an
+    // old goal completed after we already re-dispatched).
     const uint64_t seq_num = ++goal_seq_;
 
     auto goal_opt = rclcpp_action::Client<RobotMove>::SendGoalOptions();
@@ -92,6 +97,9 @@ void moveAction::send_move_command(GetZone::Response::SharedPtr response){
         }
         goal_handle_ = handle;
 
+        // Second half of the double-cancellation: an alert may have fired in the
+        // blind window before the goal was accepted, when on_alert had no handle 
+        // to cancel. Now that we hold one, cancel it here.
         if (state_ == State::WAITING){
             move_client_->async_cancel_goal(goal_handle_);
             RCLCPP_WARN(get_logger(), "Cancelling the goal that was accepted after the alert");
@@ -105,9 +113,12 @@ void moveAction::send_move_command(GetZone::Response::SharedPtr response){
         
         goal_handle_.reset();
 
+        //Success either from the action result code or the driver's own status flag.
         const bool ok = (result.code == rclcpp_action::ResultCode::SUCCEEDED) || (result.result->status == 1);
 
         if (state_ == State::WAITING){
+            // The move may have completed before our cancel tool effect; if so,
+            // accept the completion rather than forcing a needless replan.
             if (ok){
                 state_ = State::IDLE;
                 finish(true, 1.0, "Move completed before the stop took effect");
@@ -116,6 +127,9 @@ void moveAction::send_move_command(GetZone::Response::SharedPtr response){
         }
 
         if (state_ == State::RETURNING){
+            // Back at ?from after a persistent obstacle: fail on purpose
+            // so POPF replans around the blocked arc. This is the reactive-replanning
+            // trigger.
             state_ = State::IDLE;
             finish(false, 0.0, "Obstacle on " + target_ + ", arm back at " + from_);
             return;
@@ -144,6 +158,10 @@ void moveAction::on_alert(const SafetyAlert::SharedPtr msg)
         RCLCPP_WARN(get_logger(), "obstacle on '%s': stopping", target_.c_str());
         state_ = State::WAITING;
         wait_start_ = now();
+
+        // First half of the double-cancellation: cancel now if the goal is 
+        // already accepted. If it is still in the blind window, goal_response_callback
+        // cancels it once the handles arrives.
 
         if(goal_handle_){
             move_client_->async_cancel_goal(goal_handle_);

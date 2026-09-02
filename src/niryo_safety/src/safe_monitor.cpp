@@ -53,6 +53,8 @@ void SafeMonitor::on_action_info(const ActionExecutionInfo::SharedPtr msg)
             return;
         }
 
+        //new action: start from "clear" so the first genuine block is seen as a
+        //transition and produces an alert
         last_blocked_ = false;
         RCLCPP_INFO(get_logger(), "Watching %s on %s", action_.c_str(), target_.c_str());
         return;
@@ -78,6 +80,7 @@ void SafeMonitor::on_timer()
     const string pending_action = action_full_name_;
 
     if (action_ == "move"){
+        //skip this tick instead of blocking the executor; the poll retries next timer
         if (!check_path_client_->service_is_ready()){
             return;
         }

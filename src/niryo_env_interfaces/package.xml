@@ -3,7 +3,8 @@
   <name>niryo_env_interfaces</name>
   <version>0.0.0</version>
   <maintainer email="lu.cardellicchio@studenti.unina.it">Luca</maintainer>
-  <description>Custom ROS2 interfaces for environment perception</description>
+  <description>Custom ROS2 message definitions for the environment perception layer: EnvObjects and EnvScene
+  (the perceived scene published on /env/scene) and ToolStatus (the gripper open/closed state).</description>
   <license>BSD-3-Clause</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

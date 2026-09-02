@@ -28,6 +28,8 @@ WorldModelServer::WorldModelServer() : Node("world_model_server")
     human_radius_ = get_parameter("human_radius").as_double();
     path_clearance_ = get_parameter("path_clearance").as_double();
 
+    // Param format: one "class_id::type" string per entry; split on the first ':'.
+    // Perception speaks class_ids, the rest of the node speaks semantic types.
     const vector<string> class_entries = get_parameter("class_to_type").as_string_array();
     for (const auto& entry : class_entries){
         auto sep = entry.find(':');
@@ -38,21 +40,27 @@ WorldModelServer::WorldModelServer() : Node("world_model_server")
         class_to_type_[entry.substr(0,sep)] = entry.substr(sep + 1);
     }
 
+    //Order matters: generate_waypoints() must run before build_arcs(), which
+    // wires the freshly created waypoints to home.
     read_zones(csv_path);
     generate_waypoints();
     build_arcs();
     
+    // 0 = "never received": check_freshness() treats a zero stamp as "no data yet".
     last_scene_ = Time(0,0, get_clock()->get_clock_type());
     last_arm_ = Time(0,0, get_clock()->get_clock_type());
 
     gripper_closed_ = false;
     tool_received_ = false;
 
+    // /env/scene: default QoS (reliable, volatile, keep_last/10)
     scene_sub_ = create_subscription<EnvScene>(
         "/env/scene",10,
         bind(&WorldModelServer::on_scene, this, placeholders::_1)
     );
 
+    // Event-driven topic (changes on pick/place): latched via transient_local
+    // so a node starting after the last pick still gets the current gripper state.
     QoS tool_qos(1);
     tool_qos.transient_local();
     tool_sub_ = create_subscription<ToolStatus>(
@@ -60,7 +68,8 @@ WorldModelServer::WorldModelServer() : Node("world_model_server")
         bind(&WorldModelServer::on_tool_status, this, placeholders::_1)
     );
     
-    // TODO: verify the driver's QoS
+    // SensorDataQoS (best_effort, volatile, keep_last/5).
+    //TODO: confirm best_effort is the inteded reliability for robot_state.
     arm_sub_ = create_subscription<RobotState>(
         "/arm_1/niryo_robot/robot_state", SensorDataQoS(),
         bind(&WorldModelServer::on_robot_state, this, placeholders::_1)
@@ -102,6 +111,8 @@ void WorldModelServer::read_zones(const string& filename)
         double x,y,z,r,p,yaw;
         char sep;
 
+        // name and type are comma-delimited; the six pose fields are then read
+        // numerically, with the commas between them absorbed into 'sep' and dropped.
         getline(ss,name,',');
         getline(ss,type,',');
         ss >> x >> sep >> y >> sep >> z >> sep >> r >> sep >> p >> sep >> yaw;
@@ -113,7 +124,11 @@ void WorldModelServer::read_zones(const string& filename)
                 name.c_str());
             continue;
         }
+        
 
+        // stations_ keeps AREA names in file order: generate_waypoints() pairs,
+        // them consecutively, so the CSV row order defines which stations get
+        // a waypoint pair between them.
         if (type == SceneObject::AREA){
             stations_.push_back(name);
         }
@@ -158,9 +173,13 @@ void WorldModelServer::generate_waypoints()
         const auto& a = zones_.at(stations_[i]).position;
         const auto& b = zones_.at(stations_[i+1]).position;
 
+        // ref = midpoint of the two stations; the waypoints sit on the line
+        // perpendiculare to AB through this midpoint.
         double ref_x = 0.5 * (a.x + b.x);
         double ref_y = 0.5 * (a.y + b.y);
 
+        // (nx, ny) = AB rotated 90 degrees, i.e. the direction perpendicular to
+        // the segment. Normalized below.
         double nx = -(b.y - a.y);
         double ny = (b.x - a.x);
         double norm = sqrt(nx*nx + ny*ny);
@@ -175,11 +194,17 @@ void WorldModelServer::generate_waypoints()
         nx /= norm;
         ny /= norm;
 
+        // Force the normal to point away from the base (origin). Both stations
+        // are equidistant from the base, so this asymmetric push is what makes
+        // the arm route around the outer side of the shared workspace instead of
+        // cutting across it between the two stations.
         if (nx*ref_x + ny*ref_y < 0.0){
             nx = -nx;
             ny = -ny;
         }
 
+        // Two offsets = inner/outer arc, both on the outer side; fixed transit
+        // height and orientation
         for (double offset : waypoint_offsets_){
             GetZone::Response wp;
             wp.position.x = ref_x + offset*nx;
@@ -198,6 +223,7 @@ void WorldModelServer::generate_waypoints()
                 name.c_str(), wp.position.x, wp.position.y, wp.position.z);
         }
 
+        // Chain the pair into the graph: station_i <-> wp <-> station_{i+1}.
         for (const auto& wp_name : pair_wps){
             arcs_.emplace_back(stations_[i], wp_name);
             arcs_.emplace_back(wp_name, stations_[i+1]);
@@ -207,6 +233,8 @@ void WorldModelServer::generate_waypoints()
 
 void WorldModelServer::on_scene(const EnvScene::SharedPtr msg)
 {
+    //Rebuild into a temporary and swap at the end, so objects_ is never seen
+    // half-updated by a concurrent service call
     map<string, SceneItem> fresh;
 
     for (const auto& obj : msg->objects){
@@ -224,6 +252,9 @@ void WorldModelServer::on_scene(const EnvScene::SharedPtr msg)
         item.color = obj.color;
         item.center = obj.pose.position;
 
+        // support = base of the object (center lowered by half its height). A
+        // piece belongs to the zone its base rests on, not the one its centroid
+        // float over, so zone resolution uses this point rather than the center.
         item.support = obj.pose.position;
         item.support.z = obj.pose.position.z - obj.size.z / 2.0;
         fresh[obj.id] = item;
@@ -245,7 +276,12 @@ void WorldModelServer::on_robot_state(const RobotState::SharedPtr msg)
 }
 
 string WorldModelServer::resolve_zone(const geometry_msgs::msg::Point& p, const string& locatable_type) const
-{
+{   
+    //Matching rules differ by what is being placed:
+    // - PIECE: only AREAs are candidates (a piece lives in a work area and never on a transit waypoint)
+    // - HUMAN: matched in XY only with the wider human_radius_. A person is tall and only meaningfully localized
+    //          on the ground plane.
+    // - anything else (e.g. the arm): full 3D within zone_thresholds.
     const bool areas_only = (locatable_type == SceneObject::PIECE);
     const bool is_human = (locatable_type == SceneObject::HUMAN);
     const double threshold = is_human ? human_radius_ : zone_thresholds;
@@ -269,6 +305,8 @@ string WorldModelServer::resolve_zone(const geometry_msgs::msg::Point& p, const 
         }
     }
     
+    // Nearest zone only counts if it si actually within threshold; otherwise the
+    // locatable is between zones and resolves to ""
     return (best_dist <= threshold) ? best_zone : "";
 }
 
@@ -279,6 +317,8 @@ string WorldModelServer::resolve_held() const
         return "";
     }
     
+    // Gripper closed: the held piece is the closest one to the tip within grasp
+    // range. seeded with grasp_threshold_ so anything farther can never win.
     double best = grasp_threshold_;
     string held = "";
 
@@ -298,6 +338,8 @@ string WorldModelServer::resolve_held() const
         }
     }
 
+    // Closed gripper but nothing in range: likely a missed/partial grasp
+    // - worth a warning but not an error (the caller decides what to do with "").
     if (held.empty()){
         RCLCPP_WARN(get_logger(), "Gripper is closed but no piece is within %.3f m of it",
         grasp_threshold_);
@@ -341,6 +383,7 @@ bool WorldModelServer::is_node_clear(const string& node) const
     if (it == zones_.end())
         return false;
     
+    // A node is blocked if any human stands within humand_radius_ of it (XY)
     for (const auto& [name, item] : objects_){
         if (item.type != SceneObject::HUMAN)
             continue;
@@ -377,7 +420,11 @@ bool WorldModelServer::is_path_clear(const string& from, const string& to)const
         
         if (item.type != SceneObject::HUMAN)
             continue;
-        
+
+        // Project the human onto segment AB and clamp t to [0,1] so the closest
+        // point is the true nearest point on the segment (endpoints included,
+        // not the infinite line). Degenerate segment (vv~0) falls back to t=0,
+        // i.e. distance to A.        
         double t = 0.0;
         if (vv > 1e-9){
             t = ((item.center.x - a.x)*vx + (item.center.y - a.y)*vy) / vv;
@@ -389,6 +436,7 @@ bool WorldModelServer::is_path_clear(const string& from, const string& to)const
         double dx = item.center.x - px;
         double dy = item.center.y - py;        
 
+        // Blocked if the human is closer to the segment than the clearance. XY only.
         if (sqrt(dx*dx + dy*dy) < path_clearance_){
             RCLCPP_DEBUG(get_logger(), "Human '%s' obstructs the path %s -> %s",
                 name.c_str(), from.c_str(), to.c_str());
@@ -415,7 +463,8 @@ void WorldModelServer::handle_observe_req(const shared_ptr<ObserveScene::Request
 {
     (void)request;
 
-    
+    // Gate first: a partial/stale snapshot would yield a plausible-but-wrong PDDL
+    // problem that the planner silently accepts, so refuse all-or-nothing
     string stale = check_freshness();
 
     if (!stale.empty()){
@@ -438,6 +487,7 @@ void WorldModelServer::handle_observe_req(const shared_ptr<ObserveScene::Request
         obj.color = item.color;
         obj.held = (name == held_id);
 
+        // A held object has no location: it is on the tool.
         obj.location = obj.held ? "" : resolve_zone(item.support, item.type);
         if (obj.location.empty() && !obj.held){
             RCLCPP_WARN(get_logger(), "Locatable '%s' is outside every zone", name.c_str());
@@ -446,6 +496,8 @@ void WorldModelServer::handle_observe_req(const shared_ptr<ObserveScene::Request
         response->objects.push_back(obj);
     }
 
+    // The arm is always emitted as a fact. If it is between zones, report the
+    // SOME_PLACE fallback rather than "" so it always has a valid location.
     SceneObject arm;
     arm.name = arm_name_;
     arm.type = SceneObject::ROBOT;
@@ -458,6 +510,8 @@ void WorldModelServer::handle_observe_req(const shared_ptr<ObserveScene::Request
 
     response -> objects.push_back(arm);
 
+    // Emit every static node as a fact too, so the problem generator sees the
+    // full topology, not only the nodes that currently have an object on them.
     for (const auto& [zone_name, zone] : zones_){
         (void)zone;
         SceneObject obj;

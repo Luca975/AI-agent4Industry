@@ -5,6 +5,8 @@ using namespace std::placeholders;
 
 PickAction::PickAction() : ActionExecutorClient("pick",250ms)
 {
+    // Lacthed (transient_local): the world model must see the last gripper state
+    // even if it subscribes after this pick published. Both ends use it
     QoS qos(1);
     qos.transient_local();
     tool_status_pub_ = create_publisher<ToolStatus>(TOOL_STATUS_TOPIC, qos);
@@ -55,6 +57,8 @@ void PickAction::do_work()
 
     if (state_ == State::WAITING){
 
+        // No fallback for a pick (the work area is mandatory): a persistent
+        // obstacle aborts the action and escalates to emergency, it never reroutes.
         if ((now()-wait_start_).seconds() > wait_timeout_){
             RCLCPP_WARN(get_logger(), "Obstacle on '%s' persists: aborting the pick", target_.c_str());
             state_ = State::IDLE;

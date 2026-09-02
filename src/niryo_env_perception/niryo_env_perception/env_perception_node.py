@@ -1,3 +1,10 @@
+"""env_perception: mock perception node.
+
+Reads a scene from a JSON file and republishes it on /env/scene as an EnvScene
+at a fixed rate. Stands is for the real vision model; when that lands, only
+_read_scene() changes.
+"""
+
 import json
 import math
 
@@ -27,6 +34,12 @@ def rpy_to_quaternion(roll: float, pitch: float, yaw: float) -> Quaternion:
 
 
 class EnvPerception(Node):
+    """
+        Parameters:
+            scene_file Path to the JSON scene description, re-read every tick.
+            frame_id Frame stamped on every published EnvScene.
+            publish_rate Publish frequency, in Hz
+    """
 
     def __init__(self) -> None:
         super().__init__('env_perception')
@@ -63,6 +76,11 @@ class EnvPerception(Node):
             return None
 
     def _to_env_object(self, obj: dict) -> EnvObject:
+        """ Map one JSON object dict to an EnvObject.
+
+        id, class_id and position are required (a missing one raises and the object is skipped by the caller);
+        color, score, rpy and size are optional and fall back to neutral defaults.
+        """
 
         out = EnvObject()
         out.id = obj['id']
@@ -90,6 +108,7 @@ class EnvPerception(Node):
         return out
 
     def _tick(self) -> None:
+        """Read the scene once and publish it; skip the tick if the file is unreadable."""
         objects = self._read_scene()
         if objects is None:
             return

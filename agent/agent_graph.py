@@ -13,6 +13,11 @@ def route_from_idle(state:AgentState)->str:
 
 
 def route_from_llm(state:AgentState)->str:
+    """Route after an LLM turn, in priority order: pending tool calls first, then a
+    ready plan (-> running), then the deterministic escape — if no plan was ever
+    produced and the LLM has stopped calling tools (no_plan_count > 0), go to
+    emergency instead of looping. Otherwise back to idle.
+    """    
     last=state["messages"][-1]
     if getattr(last,"tool_calls",None):
         return "tools"
@@ -23,6 +28,9 @@ def route_from_llm(state:AgentState)->str:
     return "idle"
 
 def route_from_running(state:AgentState)->str:
+    """Map the phase set by running_node to the next node. 'fault' is wired to idle
+    in the edge table: a system error ends the task and returns to the prompt.
+    """    
     phase = state.get("phase")
     if phase == "complete":
         return "idle"
@@ -33,6 +41,9 @@ def route_from_running(state:AgentState)->str:
     return "fault"
 
 def route_from_tools(state:AgentState)->str:
+    """Guard the planning loop: once MAX_NO_PLAN cycles have failed to yield a
+    solvable plan, escalate to emergency instead of letting the LLM retry forever.
+    """    
     if state.get("no_plan_count",0) >= MAX_NO_PLAN:
         return "emergency"
     return "llm"

@@ -24,6 +24,11 @@ def main()->None:
     executor_client = Executor()
 #    go_home_client = ArmCommander()
 
+    # The PlanSys2 clients spin on a MultiThreaded executor in a background daemon
+    # thread, so they keep servicing futures while the graph runs on the main thread.
+    # This is what lets PlanSys2ClientBase._call_sync block on a response without
+    # deadlocking: this executor completes the very future it is waiting on.
+
     executor = MultiThreadedExecutor()
     executor.add_node(problem_client)
     executor.add_node(domain_client)
@@ -56,6 +61,9 @@ def main()->None:
     }
 
     try:
+        # Human-in-the-loop driver: the graph runs until it hits an interrupt (the idle
+        # or emergency prompt), returns it, and we resume with the user's reply via
+        # Command(resume=...). thread_id keys the checkpointer to this one session.        
         result = graph.invoke(state, config=config, context=context)
         while "__interrupt__" in result:
             prompt = result["__interrupt__"][0].value

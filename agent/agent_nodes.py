@@ -135,6 +135,8 @@ once the problem is solved.
 
 
 def idle_node(state: AgentState)-> AgentState:
+    """Prompt the user and start the next task"""
+
     phase = state.get("phase", "idle")
     if phase == "complete":
         prompt = "Task complete. What would you like to do next?"
@@ -176,7 +178,12 @@ def emergency_node(state: AgentState) -> AgentState:
 
 
 def running_node(state: AgentState, runtime:Runtime[AgentContext])->AgentState:
+    """Execute the current plan and translate its outcome into the next phase.
     
+    The replan-vs-emergency decision is made as follow:
+        -move blocked by any obstacle -> replan up to MAX_REPLAN, then emergency
+        -pick/place blocked -> emergency
+        -any other failure -> fault (system error, not a safety event)"""
     plan = state.get("cur_plan")
     if not plan:
         return{
