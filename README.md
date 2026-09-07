@@ -34,7 +34,7 @@ by this project.
 ### Repository layout
 
 The repo root is the colcon workspace:
-'''
+```
 AI-agent4Industry/                     # repo = colcon workspace
 ├── pddl/                              # PDDL domain + problem template
 ├── scenes/
@@ -57,7 +57,7 @@ AI-agent4Industry/                     # repo = colcon workspace
     ├── niryo_world_model/             
     ├── niryo_safety/                  
     └── niryo_plansys2_actions/        
-'''
+```
 
 ### Build the custom packages
  
