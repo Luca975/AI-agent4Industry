@@ -1,5 +1,5 @@
 # AI-Agent for Industry
-The aim is controlling two Niryo Ned2 arms.
+An **AI-agent** for industrial robotic manipulation on Niryo Ned2 arm(s).
 
 ## Prerequisites
  
@@ -18,7 +18,8 @@ A working ROS 2 Jazzy installation is assumed. If not installed, follow the offi
 Install it following the official guide:
  
 > **Official installation guide:** <https://github.com/NiryoRobotics/ned-ros2-driver#building-from-source>
- 
+
+The driver lives in its own colcon workspace with its own venv, kept separated from this repo.
 ---
 
 ## 2. PlanSys2 and the custom packages
@@ -29,36 +30,41 @@ Install the PlanSys2 binaries following the official guide. **POPF** is the plan
 by this project.
  
 > **Official installation guide:** <https://plansys2.github.io/getting_started/index.html#installation>
- 
+
+### Repository layout
+
+The repo root is the colcon workspace:
+'''
+AI-agent4Industry/                     # repo = colcon workspace
+├── pddl/                              # PDDL domain + problem template
+├── scenes/
+│   └── scene.json                     # live scene description (edited outside packages)
+├── agent/                             # LangGraph ReAct agent
+│   ├── agent_state.py                 
+│   ├── agent_context.py               
+│   ├── agent_graph.py                 
+│   ├── agent_nodes.py                 
+│   ├── agent_tools.py                 
+│   ├── agent_types.py                 
+│   ├── plansys2_lib/                  # ROS 2 client nodes
+│   └── main.py                        # agent entry point
+├── test_script.py
+├── bringup.launch.py                  # ROS2 stack launcher script
+└── src/
+    ├── niryo_env_interfaces/          
+    ├── niryo_env_perception/          
+    ├── niryo_world_interfaces/        
+    ├── niryo_world_model/             
+    ├── niryo_safety/                  
+    └── niryo_plansys2_actions/        
+'''
+
 ### Build the custom packages
  
 These are the packages built for this project — all steps below.
  
-Repository layout (the repo root **is** the colcon workspace):
- 
-```
-AI-AGENT4INDUSTRY/                       # repo = colcon workspace
-├── pddl/                                # PDDL domain + problem files
-├── agent/                               # LangGraph ReAct agent
-│   ├── agent_state.py                   # AgentState, PlanStep
-│   ├── agent_context.py                 # context_schema
-│   ├── agent_graph.py                   # StateGraph definition
-│   ├── agent_nodes.py                    # graph node implementations
-│   ├── agent_tools.py                    # ReAct tools
-│   ├── agent_types.py                     # shared type definitions
-│   ├── plansys2_lib/                     # ROS2 client nodes 
-│   └── main.py                           # entry point
-└── src/
-    ├── niryo_plansys2_interfaces/       # custom GetZone.srv, ObserveScene.srv, SceneObject.msg
-    └── niryo_plansys2_actions/          # MoveAction, PickAction, PlaceAction, ZoneMapServer
-```
- 
-`niryo_plansys2_actions` depends on the service definition in `niryo_plansys2_interfaces`;
-`colcon` resolves the build order automatically from the `package.xml` dependencies.
- 
 ```bash
-# Clone the repo (replace with your remote)
-git clone <your-repo-url>
+git clone https://github.com/Luca975/AI-agent4Industry
 cd AI-AGENT4INDUSTRY
  
 # Build the C++ packages
@@ -68,11 +74,7 @@ colcon build --symlink-install
  
 # Source the workspace overlay
 source install/setup.bash
-```
- 
-After building, the zone service is available at `/get_zone` (served by `ZoneMapServer`,
-which reads zone coordinates from the configured CSV).
- 
+``` 
 ---
 
 ## 3. LangGraph agent (Python virtual environment)
@@ -80,7 +82,7 @@ which reads zone coordinates from the configured CSV).
 ### Create the venv
  
 ```bash
-# From the repo root, with ROS 2 and the workspace sourced
+
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
  
@@ -93,7 +95,8 @@ source agent-env/bin/activate
  
  
 ```bash
-pip install -U --ignore-installed langgraph
+pip install -U --ignore-installed langgraph langchain-anthropic
+# TODO: confirm the exact Claude/LLM client package(s) used by the agent
 ```
 
 ### Verify the environment
@@ -101,34 +104,23 @@ pip install -U --ignore-installed langgraph
 ```bash
 python -c "import rclpy, langgraph; print('ok')"
 ```
- 
 ---
 
 ## 4. Running the system
  
-The system requires **three terminals**, run in this order from the host:
+The system requires **two terminals**, run in this order from the host:
  
-### Terminal 1 — Niryo ROS 2 driver
- 
-```bash
-cd ~/ros2_drivers_ws
-source /opt/ros/jazzy/setup.bash
-source install/setup.bash
-source venv/bin/activate
-ros2 launch niryo_ned_ros2_driver driver.launch.py drivers_list_file:=./src/ned-ros2-driver/niryo_ned_ros2_driver/config/drivers_list.yaml
-```
- 
-### Terminal 2 — PlanSys2 stack
+### Terminal 1 — ROS2 stack
  
 ```bash
 cd ~/AI-agent4Industry
 source /opt/ros/jazzy/setup.bash
 source /home/luca/ros2_drivers_ws/install/setup.bash
 source install/setup.bash
-ros2 launch niryo_plansys2_actions niryo_plansys2_launch.py
-```
- 
-### Terminal 3 — LangGraph agent
+ros2 launch bringup.launch.py
+``` 
+
+### Terminal 2 — LangGraph agent
  
 ```bash
 cd ~/AI-agent4Industry
