@@ -8,13 +8,17 @@ from plansys2_lib.planner import Planner
 from plansys2_lib.domain_expert import DomainExpert
 from plansys2_lib.scene_observer import SceneObserver
 from plansys2_lib.executor import Executor
-from plansys2_lib.arm_commander import ArmCommander
+#from plansys2_lib.arm_commander import ArmCommander
 
 @dataclass
 class AgentContext:
+    """Runtime dependecies injected into the graph via context_schema=AgentContext.
+    They are deliberately kept out of AgentState: these are live ROS client nodes, not serializable data,
+    so they must never land on checkpointed state"""
+    
     problem_client: ProblemExpert
     planner_client: Planner
     domain_client: DomainExpert
     scene_client: SceneObserver
     executor_client:Executor
-    home_pos_client:ArmCommander
+#    home_pos_client:ArmCommander

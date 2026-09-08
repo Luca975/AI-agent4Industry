@@ -1,0 +1,9 @@
+# Full symbolic snapshot used to build the PDDL problem. Served by
+# world_model_server; called once per planning cycle by the agent layer.
+
+std_msgs/Empty request
+---
+SceneObject[] objects   # detected objects, the robot and every static node
+ScenePath[] paths       # arcs with their current clear flag, both directions
+bool success            # false if the scene is stale or incomplete
+string error_info       # reason when succes is false, empty otherwise

@@ -7,11 +7,10 @@ from langgraph.types import Command
 
 @tool
 def observe_scene(runtime: ToolRuntime[AgentContext]) -> str:
-    """Observe the current scene and return the detected objects in symbolic form,
-    ready to build the PDDL problem. Use this tool at the beginning, before generating the problem,
-    to know which objects are present, their type and location."""
+    """Observe the current scene and return the detected objects and the graph of transit path in symbolic form,
+    ready to build the PDDL problem. Use this tool at the beginning, before generating the problem."""
 
-    success, objects, info = runtime.context.scene_client.observe_scene()
+    success, objects, paths, info = runtime.context.scene_client.observe_scene()
     if not success:
         return f"Error while observing the scene: {info}"
     if not objects:
@@ -19,14 +18,37 @@ def observe_scene(runtime: ToolRuntime[AgentContext]) -> str:
     
 
     lines = []
-    for name,type_, location in objects:
-        if location:
-            lines.append(f"{name} ({type_}) -> {location}")
-        else:
-            lines.append(f"{name} ({type_})")
-    
-    return "Objects in the scene:\n" + "\n".join(lines)
+    for name,type_, location, held, color in objects:
+        descr = f"{name} ({type_}"
+        if color:
+            descr += f", {color}"
+        descr += ")"
 
+        if held:
+            descr += " -> held by the arm"
+        elif location:
+            descr += f" -> {location}"
+        
+        lines.append(descr)
+    
+    out = "Objects in the scene:\n" + "\n".join(lines)
+
+    if paths:
+        # Pre-compose the topology as verbatim :init snippets so the LLM copies it
+        # rather than deriving it: (connected a b) for every arc, plus (clean_path a b)
+        # only when that segment is currently human-free. A missing clean_path is how a
+        # blocked arc is signalled to the planner.        
+        arc_lines = []
+        for from_node, to_node, clear in paths:
+            fact = f"(connected {from_node} {to_node})"
+            if clear:
+                fact += f" (clean_path {from_node} {to_node})"
+            arc_lines.append(fact);
+
+        out += ("\n\nGraph facts (copy these verbatim into :init):\n"
+                + "\n".join(arc_lines))
+
+    return out
 
 @tool
 def get_domain(runtime: ToolRuntime[AgentContext]) -> str:
@@ -73,12 +95,28 @@ def get_plan(runtime: ToolRuntime[AgentContext]):
         return "No problem generated yet"
     
     success, plan, info = runtime.context.planner_client.get_plan(domain, problem_str)
+
     if not success:
-        return f"No plan found: {info}"
+        # Bump the planning-loop guard: route_from_tools escalates to emergency once
+        # this reaches MAX_NO_PLAN, and route_from_llm uses it as the deterministic
+        # escape when the LLM stops calling tools without a plan. Reset to 0 on success        
+        count = runtime.state.get("no_plan_count",0) + 1
+        return Command(
+            update={
+                "no_plan_count":count,
+                "messages":[
+                    ToolMessage(
+                        content=f"No plan found: {info}",
+                        tool_call_id=runtime.tool_call_id
+                    )
+                ]
+            }
+        )
     
     return Command(
         update={
-            "cur_plan":plan,
+            "cur_plan": plan,
+            "no_plan_count": 0,
             "messages":[
                 ToolMessage(
                     content="Plan found: the problem is solvable",
@@ -92,6 +130,9 @@ def get_plan(runtime: ToolRuntime[AgentContext]):
 def set_problem(problem_str:str, runtime: ToolRuntime[AgentContext]) -> Command:
     """Store the generated problem in the agent state, to be later sent to the system with the send_problem tool.
     Pass the full PDDL problem as a single string. Call this once you have written the problem"""
+
+    # State-mutating tools return a Command(update=...) rather than a plain string: the
+    # ToolMessage (carrying tool_call_id) is the tool's reply, the rest writes the state.
 
     return Command(
         update={

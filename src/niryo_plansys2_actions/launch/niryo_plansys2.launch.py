@@ -8,7 +8,6 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
 
-    pkg_dir = get_package_share_directory('niryo_plansys2_actions')
     namespace = LaunchConfiguration('namespace')
     model_file = LaunchConfiguration('model_file')
 
@@ -32,17 +31,6 @@ def generate_launch_description():
             'model_file': model_file,
             'namespace': namespace
         }.items())
-
-    zone_map_server_cmd = Node(
-        package='niryo_plansys2_actions',
-        executable='zone_map_server_node',
-        name='zone_map_server_node',
-        namespace=namespace,
-        output='screen',
-        parameters=[{
-            'zones_file': os.path.join(pkg_dir, 'config', 'zones.csv'),
-            'zone_thresholds': 0.15
-            }])
 
     move_cmd = Node(
         package='niryo_plansys2_actions',
@@ -72,7 +60,6 @@ def generate_launch_description():
     ld.add_action(declare_namespace_cmd)
     ld.add_action(declare_model_file_cmd)
     ld.add_action(plansys2_cmd)
-    ld.add_action(zone_map_server_cmd)
     ld.add_action(move_cmd)
     ld.add_action(pick_cmd)
     ld.add_action(place_cmd)

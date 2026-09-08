@@ -8,6 +8,7 @@ from niryo_ned_ros2_interfaces.msg import ArmMoveCommand
 from plansys2_lib.base import PlanSys2ClientBase
 
 class ArmCommander(PlanSys2ClientBase):
+    """Agent-side client that drives the arm to a fixed home configuration."""
 
     HOME_JOINTS = [0.0, 0.5, -1.25, 0.0, 0.0, 0.0]
     ACTION_NAME = "/arm_1/niryo_robot_arm_commander/robot_action"
@@ -20,6 +21,7 @@ class ArmCommander(PlanSys2ClientBase):
         )
 
     def go_home(self, timeout_sec:float = 30.0)->tuple[bool,str]:
+        """Send the arm home and block until it arrives. Returns (ok, error_info)"""
         
         if not self._move_client.wait_for_server(timeout_sec=5.0):
             info = f"Action server {self.ACTION_NAME} not available"

@@ -1,0 +1,7 @@
+# Is a map node currently free of humans? Served by world_model_server and polled
+# by safe_monitor while a pick/place is executing.
+
+string node
+---
+bool clear      #false if a human occupies the node
+bool success    #false if the node is unknown

@@ -1,0 +1,9 @@
+# Pose and type of a named map zone. Served by world_model_server; callers use the
+# returned pose to command the arm.
+
+string zone
+---
+geometry_msgs/Point position
+niryo_ned_ros2_interfaces/RPY rpy
+string type     # one of the SceneObject type constants (area / waypoint)
+bool success    # false if the zone is unknown

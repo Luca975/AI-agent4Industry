@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>niryo_world_interfaces</name>
+  <version>0.0.0</version>
+  <maintainer email="lu.cardellicchio@studenti.unina.it">Luca</maintainer>
+  <description>Custom ROS2 message and service definitions shared by the Niryo world-model and
+  safety layers; scene snapshot (ObserveScene, SceneObject, ScenePath), zone lookup (GetZone),
+  runtime human occupancy/clearance checks (CheckNode, CheckPath) and safety alerts (SafetyAlert). </description>
+  <license>BSD-3-Clause</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>geometry_msgs</depend>
+  <depend>niryo_ned_ros2_interfaces</depend>
+  <depend>std_msgs</depend>
+
+  <buildtool_depend>rosidl_default_generators</buildtool_depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
+
+  <member_of_group>rosidl_interface_packages</member_of_group>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

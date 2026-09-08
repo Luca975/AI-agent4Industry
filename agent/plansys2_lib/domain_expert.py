@@ -7,6 +7,7 @@ from plansys2_msgs.srv import GetDomain
 from std_msgs.msg import Empty
 
 class DomainExpert(PlanSys2ClientBase):
+    """Agent-side client for the PlanSys2 domain expert (fetches the PDDL domain)"""
 
     def __init__(self)->None:
         super().__init__('agent_domain_expert_client')
