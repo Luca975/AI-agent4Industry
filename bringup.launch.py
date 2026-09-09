@@ -1,4 +1,4 @@
-"""Full-stack bring-up: Niryo driver (in its own venv) + the custom stack."""
+"""Full-stack bring-up (naive agent): Niryo driver (in its own venv) + the custom stack."""
 
 
 
@@ -37,10 +37,8 @@ def generate_launch_description():
     stack = TimerAction(
         period=DRIVER_WARMUP,
         actions=[
-            _include("niryo_env_perception", "env_perception.launch.py"),
-            _include("niryo_safety", "safe_monitor.launch.py"),            
+            _include("niryo_env_perception", "env_perception.launch.py"),          
             _include("niryo_world_model", "world_model.launch.py"),
-            _include("niryo_plansys2_actions", "niryo_plansys2.launch.py"),
         ],
     )
  

@@ -2,9 +2,9 @@ import threading
 from rclpy.node import Node
 from rclpy.callback_groups import ReentrantCallbackGroup
 
-class PlanSys2ClientBase(Node):
+class ClientBase(Node):
 
-    """Base for the agent's PlanSys2 clients: a Node with a reentrant callback group
+    """Base for the agent's ROS clients: a Node with a reentrant callback group
     and one blocking server-call helper
     
     The reentrant group is the load-bearing choice: these clients are called
