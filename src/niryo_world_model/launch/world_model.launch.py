@@ -29,8 +29,8 @@ def generate_launch_description():
             # full-size person and would mark every node of this cell occupied
             'zone_thresholds': 0.15,
             'grasp_threshold': 0.05,
-            'human_radius': 0.08,
-            'path_clearance': 0.08,
+            'human_radius': 0.01,
+            'path_clearance': 0.01,
             'staleness_threshold': 1.0,
         }])
 

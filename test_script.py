@@ -19,8 +19,13 @@ Two modes:
           to make the planner fail to find a plan.
               --inject wp1,wp2
 
-Node coordinates (areas and home) come from zones.csv; waypoints are derived the
-same way world_model_server does, so the injected human lands exactly on the node.
+Node coordinates are resolved at startup through the world model's
+/world_model_server/get_zone service -- the same map the arm navigates by -- so an
+injected human lands exactly on the node, whatever pose that node was loaded with.
+This replaces the old CSV + waypoint-derivation path: waypoints are no longer
+computed geometrically, they are saved robot poses the world model serves by name.
+The node names used below (wp1, workspace_1, ...) must therefore match the
+saved-pose names on the robot.
 
 Scenarios:
   1 baseline     (no director)
@@ -31,9 +36,7 @@ Scenarios:
 """
 
 import os
-import csv
 import json
-import math
 import time
 import argparse
 import threading
@@ -41,49 +44,10 @@ import threading
 import rclpy
 from rclpy.node import Node
 from plansys2_msgs.msg import ActionExecutionInfo
+from niryo_world_interfaces.srv import GetZone
 
 HOME = os.path.expanduser('~/AI-agent4Industry')
 SCENE_FILE = os.path.join(HOME, 'scenes', 'scene.json')
-ZONES_FILE = os.path.join(HOME, 'src', 'niryo_world_model', 'config', 'zones.csv')
-
-# must match world_model_server params
-WAYPOINT_OFFSETS = [0.02, 0.22]
-
-
-def load_nodes() -> dict:
-    """Return {node_name: (x, y)} for every area, home, and derived waypoint,
-    reproducing world_model_server so injected humans land on the real nodes."""
-    areas = []          # (name, x, y) in CSV order
-    nodes = {}
-
-    with open(ZONES_FILE) as f:
-        for row in csv.reader(f):
-            if len(row) < 8:
-                continue
-            name, kind = row[0], row[1]
-            x, y = float(row[2]), float(row[3])
-            nodes[name] = (x, y)
-            if kind == 'area':
-                areas.append((name, x, y))
-
-    # derive waypoints between consecutive stations, exactly like generate_waypoints
-    wp_index = 1
-    for i in range(len(areas) - 1):
-        _, ax, ay = areas[i]
-        _, bx, by = areas[i + 1]
-        ref_x, ref_y = 0.5 * (ax + bx), 0.5 * (ay + by)
-        nx, ny = -(by - ay), (bx - ax)
-        norm = math.hypot(nx, ny)
-        if norm < 1e-6:
-            continue
-        nx, ny = nx / norm, ny / norm
-        if nx * ref_x + ny * ref_y < 0.0:
-            nx, ny = -nx, -ny
-        for off in WAYPOINT_OFFSETS:
-            nodes[f"wp{wp_index}"] = (ref_x + off * nx, ref_y + off * ny)
-            wp_index += 1
-
-    return nodes
 
 
 def human_entry(name: str, x: float, y: float) -> dict:
@@ -117,9 +81,8 @@ def clear_humans(scene: dict) -> dict:
 
 class Director(Node):
 
-    def __init__(self, args, nodes):
+    def __init__(self, args):
         super().__init__('test_director')
-        self._nodes = nodes
         self._mode = args.mode
         self._inject = args.inject.split(',')
         self._transient = args.transient
@@ -132,6 +95,19 @@ class Director(Node):
         else:
             self._on_action = None
             self._on_args = []
+
+        # Node poses live in the world model now (loaded from the robot's saved
+        # library poses), so it is the only authority on where a node actually is.
+        # Resolve every injection target once, up front: node poses are static and
+        # doing it here keeps _do_inject a pure dict read -- a get_zone call from
+        # inside the /action_execution_info callback would nest a spin and deadlock.
+        self._zone_client = self.create_client(GetZone, '/world_model_server/get_zone')
+        if not self._zone_client.wait_for_service(timeout_sec=10.0):
+            raise SystemExit("/world_model_server/get_zone unavailable -- is the stack running?")
+        self._coords = self._resolve_nodes(self._inject)
+        missing = [n for n in self._inject if n not in self._coords]
+        if missing:
+            raise SystemExit(f"cannot resolve node(s) via get_zone: {missing}")
 
         # always start from a human-free scene so the agent plans normally
         write_scene(clear_humans(load_scene()))
@@ -146,13 +122,31 @@ class Director(Node):
             self.get_logger().info(
                 f"SINGLE: waiting for {self._on_action}{self._on_args} to inject on {self._inject}")
 
+    def _resolve_nodes(self, names, timeout_sec: float = 5.0) -> dict:
+        """Return {name: (x, y)} for each node via /world_model_server/get_zone.
+
+        Unknown or unreachable names are logged and dropped; the caller checks the
+        result for completeness before proceeding."""
+        coords = {}
+        for name in names:
+            req = GetZone.Request()
+            req.zone = name
+            future = self._zone_client.call_async(req)
+            rclpy.spin_until_future_complete(self, future, timeout_sec=timeout_sec)
+            if not future.done():
+                self.get_logger().error(f"get_zone('{name}') timed out")
+                continue
+            resp = future.result()
+            if resp is None or not resp.success:
+                self.get_logger().error(f"unknown node '{name}' (get_zone failed)")
+                continue
+            coords[name] = (resp.position.x, resp.position.y)
+        return coords
+
     def _do_inject(self):
         scene = load_scene()
         for i, node in enumerate(self._inject):
-            if node not in self._nodes:
-                self.get_logger().error(f"Unknown node '{node}'")
-                continue
-            x, y = self._nodes[node]
+            x, y = self._coords[node]
             scene["objects"].append(human_entry(f"person_{i+1}", x, y))
         write_scene(scene)
 
@@ -195,16 +189,16 @@ def main():
     if args.mode == 'single' and not args.on:
         raise SystemExit("--on is required in single mode")
 
-    nodes = load_nodes()
-
     rclpy.init()
-    director = Director(args, nodes)
+    director = None
     try:
+        director = Director(args)
         rclpy.spin(director)
     except KeyboardInterrupt:
         pass
     finally:
-        director.destroy_node()
+        if director is not None:
+            director.destroy_node()
         rclpy.shutdown()
 
 
