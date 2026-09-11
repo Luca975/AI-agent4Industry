@@ -8,7 +8,6 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
 
-    pkg_dir = get_package_share_directory('niryo_world_model')
     namespace = LaunchConfiguration('namespace')
 
     declare_namespace_cmd = DeclareLaunchArgument(
@@ -23,7 +22,6 @@ def generate_launch_description():
         namespace=namespace,
         output='screen',
         parameters=[{
-            'zones_file': os.path.join(pkg_dir, 'config', 'zones.csv'),
             'arm_name': 'arm_1',
             'class_to_type': ['cube:piece', 'person:human'],
 
@@ -33,12 +31,6 @@ def generate_launch_description():
             'grasp_threshold': 0.05,
             'human_radius': 0.08,
             'path_clearance': 0.08,
-
-            # transit waypoints: inner and outer arc around the base, both on the
-            # outer side of the corridor (a symmetric offset would fall into the base)
-            'waypoint_offsets': [0.02, 0.22],
-            'waypoint_height': 0.35,
-
             'staleness_threshold': 1.0,
         }])
 

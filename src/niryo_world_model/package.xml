@@ -4,8 +4,7 @@
   <name>niryo_world_model</name>
   <version>0.0.1</version>
   <description>
-    Symbolic world model for the Niryo Ned2 planning stack. Holds the static map of
-    stations, generates the transit waypoints and the graph topology, and fuses the
+    Symbolic world model for the Niryo Ned2 planning stack. Holds the static graph topology, and fuses the
     perceived scene with arm and gripper state into symbolic facts. Serves both a one-shot scene
     snapshot for building the PDDL problem and the continuous human occupancy and path clearance
     queries the safety monitor polls at runtime

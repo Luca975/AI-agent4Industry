@@ -3,8 +3,8 @@
  *   @brief The node turns the raw perception stream into the facts
  *       the planning layer needs.
  *
- *       The server owns a *static* topological map (areas + auto-generated waypoints,
- *       read once from a CSV at startup) and fuse it with the *live* perception, gripper
+ *       The server owns a *static* topological map (areas + waypoints,
+ *       read once at startup) and fuse it with the *live* perception, gripper
  *       and arm-state streams. It exposes four services:
  *       - get_zone: the pose (x,y,z,roll,pitch,yaw) of a named zone
  *       - observe_scene: a full symbolic snapshot ready to be transcribed into a PDDL :init section.
@@ -30,6 +30,8 @@
 #include "niryo_env_interfaces/msg/env_scene.hpp"
 #include "niryo_env_interfaces/msg/tool_status.hpp"
 #include "niryo_ned_ros2_interfaces/msg/robot_state.hpp"
+#include "niryo_ned_ros2_interfaces/srv/get_name_description_list.hpp"
+#include "niryo_ned_ros2_interfaces/srv/get_pose.hpp"
 #include "geometry_msgs/msg/point.hpp"
 
 #include <string>
@@ -50,6 +52,8 @@ using CheckNode = niryo_world_interfaces::srv::CheckNode;
 using EnvScene = niryo_env_interfaces::msg::EnvScene;
 using ToolStatus = niryo_env_interfaces::msg::ToolStatus;
 using RobotState = niryo_ned_ros2_interfaces::msg::RobotState;
+using GetPoseList = niryo_ned_ros2_interfaces::srv::GetNameDescriptionList;
+using GetPose = niryo_ned_ros2_interfaces::srv::GetPose;
 
 /** 
  *      @brief One detected object in the live scene, in the internal representation.
@@ -76,32 +80,19 @@ class WorldModelServer : public Node
         // --- Startup: build the static topological map -----------------------
         
         /**
-         * @brief Load zones from a CSV file into @ref zones_.
-         * Row format: name,type,x,y,z,roll,pitch,yaw. Only AREA and WAYPOINT
-         * rows are kept (everything else is a runtime object and comes from
-         * perception, not config); AREA rows are additionally recorded in @ref stations_ in file order.
-         * @param filename Absolute path to the zones CSV.
+         * @brief Populate @ref zones_ from the robot's saved library poses.
+         *
+         * Fetches every saved pose through the driver and stores each as a zone,
+         * classified WAYPOINT if its name starts with @ref waypoint_prefix_ and
+         * AREA otherwise. Aborts (throws) if the driver services are unavailable, since an empty
+         * topology would yield broken PDDL problems the planner silently accepts.
          */
-        void read_zones(const string& filename);
+        void load_zones_from_robot();
 
         /**
-         * @brief Synthesize a pair of via-waypoints between each consecutive
-         *        station pair and add the corresponding arcs.
+         * @brief Wire the fixed, hand-built topology over the loaded nodes.
          *
-         * For stations A,B the waypoints sit on the perpendicular bisector of
-         * AB, pushed to the *outer* side (away from the robot base) so the arm
-         * routes around the shared workspace instead of across it. Both offsets
-         * in @ref waypoint_offsets_ (inner/outer arc) are placed at fixed
-         * @ref waypoint_height_. Requires at least two stations.
-         */        
-        void generate_waypoints();
-
-        /**
-         * @brief Connect HOME_NODE to every waypoint, completing the graph.
-         *
-         * Must run after generate_waypoints() (the waypoints must already exist
-         * in @ref zones_). Together with the station<->waypoint arcs added by
-         * generate_waypoints(), this yields the full navigable topology.
+         * Must run after load_zones_from_robot()
          */
         void build_arcs();
 
@@ -208,7 +199,6 @@ class WorldModelServer : public Node
 
         // --- Static map (built at startup, never mutated afterwards) ---------------
         map<string, GetZone::Response> zones_;              ///< Name -> zone pose+type. Reuses GetZone::Response as the storage record. 
-        vector<string> stations_;                           ///< AREA names in CSV order (input to waypoint pairing).
         vector<pair<string, string>> arcs_;                 ///< Undirected edges, stored once; emitted both ways in observe_scene.
 
         // --- Live state ------------------------------------------------------------
@@ -228,8 +218,7 @@ class WorldModelServer : public Node
         double zone_thresholds;                             ///< Max distance for a generic locatable to resolve to a zone.
         double grasp_threshold_;                            ///< Max arm-to-piece distance to consider a piece held
         double staleness_threshold_;                        ///< Max stream age (s) before observe_scene refuses.
-        vector<double> waypoint_offsets_;                   ///< Perpendicular offsets (inner/outer arc) for generated waypoints.
-        double waypoint_height_;                            ///< Fixed z of generated waypoints.
+        string waypoint_prefix_;                             ///< Name prefix marking a saved pose as a transit WAYPOINT (else AREA).
         double human_radius_;                               ///< Occupancy radius of a human (node and human-zone matching).
         double path_clearance_;                             ///< Min human-to-segment- distance for an arc to count as a clear.
 
