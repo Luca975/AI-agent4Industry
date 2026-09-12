@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 
 from ros_lib.scene_observer import SceneObserver
-from ros_lib.executor import Executor
+from ros_lib.niryo_driver import NiryoDriverClient
 #from plansys2_lib.arm_commander import ArmCommander
 
 @dataclass
@@ -14,9 +14,10 @@ class AgentContext:
     They are deliberately kept out of AgentState: these are live ROS client nodes, not serializable data,
     so they must never land on checkpointed state"""
     
-    problem_client: ProblemExpert
-    planner_client: Planner
-    domain_client: DomainExpert
+#    problem_client: ProblemExpert
+#    planner_client: Planner
+#    domain_client: DomainExpert
+    driver_client: NiryoDriverClient
     scene_client: SceneObserver
-    executor_client:Executor
+#    executor_client:Executor
 #    home_pos_client:ArmCommander

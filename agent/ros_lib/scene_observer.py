@@ -9,7 +9,7 @@ from niryo_world_interfaces.srv import ObserveScene, GetZone
 from niryo_world_interfaces.msg import SceneObject
 from niryo_env_interfaces.msg import EnvScene
 
-from ros_lib import ClientBase
+from ros_lib.base import ClientBase
 
 def _quat_to_rpy(q):
     """Convert a quaternion to (roll, pitch, yaw), radians.

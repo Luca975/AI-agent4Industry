@@ -4,7 +4,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from agent_state import AgentState
 from agent_tools import tools
-from agent_nodes import idle_node, llm_node, running_node, emergency_node, MAX_NO_PLAN
+from agent_nodes import idle_node, llm_node, emergency_node
 from agent_context import AgentContext
 
 def route_from_idle(state:AgentState)->str:
@@ -13,38 +13,21 @@ def route_from_idle(state:AgentState)->str:
 
 
 def route_from_llm(state:AgentState)->str:
-    """Route after an LLM turn, in priority order: pending tool calls first, then a
-    ready plan (-> running), then the deterministic escape — if no plan was ever
-    produced and the LLM has stopped calling tools (no_plan_count > 0), go to
-    emergency instead of looping. Otherwise back to idle.
-    """    
-    last=state["messages"][-1]
-    if getattr(last,"tool_calls",None):
+    """After an LLM turn: run any tool calls; else the task is done (the model
+    stopped calling tools) so return to idle. If the step budget is spent, escalate
+    to emergency instead of looping. The budget is the only deterministic guard —
+    every reaction decision was already the LLM's."""
+    last = state["messages"][-1]
+    if getattr(last, "tool_calls", None):
         return "tools"
-    if state.get("cur_plan") is not None:
-        return "running"
-    if state.get("no_plan_count",0) > 0:
+    if state.get("step_budget", 0) <= 0:
         return "emergency"
     return "idle"
 
-def route_from_running(state:AgentState)->str:
-    """Map the phase set by running_node to the next node. 'fault' is wired to idle
-    in the edge table: a system error ends the task and returns to the prompt.
-    """    
-    phase = state.get("phase")
-    if phase == "complete":
-        return "idle"
-    if phase == "replan":
-        return "llm"
-    if phase == "emergency":
-        return "emergency"
-    return "fault"
-
-def route_from_tools(state:AgentState)->str:
-    """Guard the planning loop: once MAX_NO_PLAN cycles have failed to yield a
-    solvable plan, escalate to emergency instead of letting the LLM retry forever.
-    """    
-    if state.get("no_plan_count",0) >= MAX_NO_PLAN:
+def route_from_tools(state: AgentState) -> str:
+    """After tools run, hand control back to the LLM — unless the budget is spent,
+    in which case terminate via emergency rather than loop."""
+    if state.get("step_budget", 0) <= 0:
         return "emergency"
     return "llm"
 
@@ -54,7 +37,6 @@ builder = StateGraph(AgentState, context_schema=AgentContext)
 builder.add_node("idle",idle_node)
 builder.add_node("llm",llm_node)
 builder.add_node("tools",ToolNode(tools))
-builder.add_node("running",running_node)
 builder.add_node("emergency",emergency_node)
 
 builder.add_edge(START,"idle")
@@ -65,19 +47,13 @@ builder.add_conditional_edges("idle",route_from_idle,{
 builder.add_conditional_edges("llm",route_from_llm,{
     "tools":"tools",
     "idle":"idle",
-    "running":"running",
     "emergency":"emergency"
 })
 builder.add_conditional_edges("tools", route_from_tools, {
     "llm":"llm",
     "emergency":"emergency"
 })
-builder.add_conditional_edges("running", route_from_running, {
-    "idle":"idle",
-    "llm":"llm",
-    "emergency":"emergency",
-    "fault":"idle"
-})
+
 builder.add_edge("emergency","idle")
 
 

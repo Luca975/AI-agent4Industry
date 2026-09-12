@@ -1,12 +1,16 @@
 """Driver-facing client for the naive agent: cartesian arm moves + gripper.
 
-Each primitive owns its goal and carries its own safety check
-against the world model, matching the two geometries the model distinguishes:
-  - move() polls check_path on the arc it traverses while the motion is in
-    flight; on a blocked arc it cancels the goal and reports the obstacle.
-  - grip() checks check_node on the destination node before commanding the tool;
-    check_path guards the arc but not the arrival point, so a human on the node
-    itself is caught here.
+The arm is commanded point-to-point in cartesian space (RobotMove, POSE): a move
+just goes to a pose. So move() takes a kind that selects which check
+guards the motion, matching its two physical phases:
+  - transit: travel along an arc between stations -> check_path, pre-check plus
+    polling while the motion is in flight (the arc is long and shared).
+  - approach: local reach onto the object inside a station -> check_node,
+    pre-check only (short, local motion).
+grip() opens/closes the tool at a node, pre-checking it with check_node.
+
+All of this is mechanism only: whether to wait, retry, reroute or escalate on a
+reported obstacle is the LLM's decision, never taken here.
 """
 
 import time
@@ -29,7 +33,7 @@ class NiryoDriverClient(ClientBase):
     CHECK_NODE = "/world_model_server/check_node"
 
     def __init__(self, tool_id: int = 11, poll_period: float = 0.1)->None:
-        super.__init__('agent_niryo_driver_client')
+        super().__init__('agent_niryo_driver_client')
         self._tool_id = tool_id
         self._poll_period = poll_period
 
@@ -37,6 +41,8 @@ class NiryoDriverClient(ClientBase):
         self._tool_client = ActionClient(self, Tool, self.TOOL_ACTION, callback_group=self.cb_group)
         self._check_path_client = self.create_client(CheckPath, self.CHECK_PATH, callback_group=self.cb_group)
         self._check_node_client = self.create_client(CheckNode, self.CHECK_NODE, callback_group=self.cb_group)
+
+    # --- world-model safety checks -------------------------------------------
 
     def _path_clear(self, from_node: str, to_node: str, timeout_sec: float = 1.0) -> bool:
         """Is the arc currently free of humans? A failed/unknown check is a config
@@ -59,22 +65,35 @@ class NiryoDriverClient(ClientBase):
             return True
         return resp.clear
 
-    def move(self, pose, from_node: str, to_node: str, timeout_sec: float = 60.0):
-        """Move the arm to a cartesian pose, watching the arc for obstruction.
+    # --- primitives ----------------------------------------------------------
 
-        pose is [x, y, z, roll, pitch, yaw]. Returns (ok, message). On a human
-        blocking the arc the goal is cancelled and ok is False with an
-        'obstacle on arc from->to' message; on driver failure ok is False with
-        the driver's message; on success ok is True.
+    def move(self, pose, kind: str, from_node: str = None, to_node: str = None,
+             node: str = None, timeout_sec: float = 60.0):
+        """Move the arm to a cartesian pose. The motion is point-to-point; kind
+        selects only which world-model check guards it.
+
+          kind="transit": travel along an arc. Needs from_node/to_node. Pre-checks
+            the arc (check_path) and keeps polling it while the motion is in
+            flight, cancelling the goal on a block.
+          kind="approach": local move onto the object inside a station. Needs node.
+            Pre-checks the node (check_node) only; no continuous polling.
+
+        pose is [x, y, z, roll, pitch, yaw]. Returns (ok, message): an
+        'obstacle on arc/node ...' or driver message on failure, driver message on
+        success.
         """
+        # kind-specific pre-check
+        if kind == "transit":
+            if not self._path_clear(from_node, to_node):
+                return False, f"obstacle on arc {from_node}->{to_node}"
+        elif kind == "approach":
+            if not self._node_clear(node):
+                return False, f"obstacle on node {node}"
+        else:
+            return False, f"unknown move kind '{kind}'"
+
         if not self._move_client.wait_for_server(timeout_sec=5.0):
             return False, f"Action server {self.MOVE_ACTION} not available"
-
-        # Pre-checks: fail fast instead of starting a motion that is already unsafe.
-        if not self._path_clear(from_node, to_node):
-            return False, f"obstacle on arc {from_node}->{to_node}"
-        if not self._node_clear(to_node):
-            return False, f"obstacle on node {to_node}"
 
         cmd = ArmMoveCommand()
         cmd.cmd_type = ArmMoveCommand.POSE
@@ -97,17 +116,22 @@ class NiryoDriverClient(ClientBase):
         result_future = goal_handle.get_result_async()
         result_future.add_done_callback(lambda _f: result_done.set())
 
-        # result_done.wait returns True the instant the motion ends; each timeout
-        # is one safety poll tick. Cancel on a blocked arc or on the overall deadline.
-        deadline = time.monotonic() + timeout_sec
-        while not result_done.wait(self._poll_period):
-            if time.monotonic() > deadline:
+        # transit polls the arc while the motion runs; approach is short, local and
+        # already pre-checked, so it just waits for the result.
+        if kind == "transit":
+            deadline = time.monotonic() + timeout_sec
+            while not result_done.wait(self._poll_period):
+                if time.monotonic() > deadline:
+                    goal_handle.cancel_goal_async()
+                    return False, f"Timeout during transit to {to_node}"
+                if not self._path_clear(from_node, to_node):
+                    goal_handle.cancel_goal_async()
+                    result_done.wait(5.0)          # let the cancellation settle
+                    return False, f"obstacle on arc {from_node}->{to_node}"
+        else:
+            if not result_done.wait(timeout_sec):
                 goal_handle.cancel_goal_async()
-                return False, f"Timeout during move to {to_node}"
-            if not self._path_clear(from_node, to_node):
-                goal_handle.cancel_goal_async()
-                result_done.wait(5.0)          # let the cancellation settle
-                return False, f"obstacle on arc {from_node}->{to_node}"
+                return False, f"Timeout during approach to {node}"
 
         result = result_future.result()
         if result is None:
@@ -115,6 +139,7 @@ class NiryoDriverClient(ClientBase):
         if result.result.status < 0:
             return False, result.result.message
         return True, result.result.message
+
 
     def grip(self, close: bool, node: str, timeout_sec: float = 30.0):
         """Open or close the gripper at a node, after checking it is human-free.
