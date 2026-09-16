@@ -228,9 +228,9 @@ void WorldModelServer::on_robot_state(const RobotState::SharedPtr msg)
 string WorldModelServer::resolve_zone(const geometry_msgs::msg::Point& p, const string& locatable_type) const
 {   
     //Matching rules differ by what is being placed:
-    // - PIECE: only AREAs are candidates (a piece lives in a work area and never on a transit waypoint)
-    // - HUMAN: matched in XY only with the wider human_radius_. A person is tall and only meaningfully localized
-    //          on the ground plane.
+    // - PIECE: only AREAs are candidates, matched in XY only (a piece lives on the
+    //          work-area plane; its height vs the elevated zone center is not meaningful)
+    // - HUMAN: matched in XY only with the wider human_radius_.
     // - anything else (e.g. the arm): full 3D within zone_thresholds.
     const bool areas_only = (locatable_type == SceneObject::PIECE);
     const bool is_human = (locatable_type == SceneObject::HUMAN);
@@ -246,7 +246,7 @@ string WorldModelServer::resolve_zone(const geometry_msgs::msg::Point& p, const 
         
         double dx = p.x - zone.position.x;
         double dy = p.y - zone.position.y;
-        double dz = is_human ? 0.0: (p.z - zone.position.z);
+        double dz = (is_human || areas_only) ? 0.0: (p.z - zone.position.z);
         double dist = sqrt(dx*dx + dy*dy + dz*dz);
 
         if(dist < best_dist){

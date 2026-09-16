@@ -1,19 +1,19 @@
 {
   "objects": [
     {
-      "id": "cube_1",
-      "class_id": "cube",
-      "color": "green",
+      "id": "circle_1",
+      "class_id": "circle",
+      "color": "red",
       "score": 0.97,
       "position": {
-        "x": 0.022,
-        "y": -0.27,
-        "z": 0.127
+        "x": -0.0144,
+        "y": -0.2228,
+        "z": 0.0432
       },
       "rpy": {
-        "roll": 0.0,
-        "pitch": 0.0,
-        "yaw": -0.3
+        "roll": -0.8492,
+        "pitch": 1.5526,
+        "yaw": -1.6103
       },
       "size": {
         "x": 0.02,
@@ -22,19 +22,19 @@
       }
     },
     {
-      "id": "cube_2",
-      "class_id": "cube",
-      "color": "red",
+      "id": "circle_2",
+      "class_id": "circle",
+      "color": "blue",
       "score": 0.97,
       "position": {
-        "x": 0.022,
-        "y": -0.27,
-        "z": 0.127
+        "x": 0.0101,
+        "y": -0.2533,
+        "z": 0.0426
       },
       "rpy": {
-        "roll": 0.0,
-        "pitch": 0.0,
-        "yaw": -0.3
+        "roll": -0.3791,
+        "pitch": 1.5526,
+        "yaw": -1.6102
       },
       "size": {
         "x": 0.02,

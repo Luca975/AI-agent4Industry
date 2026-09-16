@@ -23,7 +23,7 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'arm_name': 'arm_1',
-            'class_to_type': ['cube:piece', 'person:human'],
+            'class_to_type': ['cube:piece', 'person:human', 'circle:piece'],
 
             # matching radii, scaled to a desktop layout: the defaults assume a
             # full-size person and would mark every node of this cell occupied
