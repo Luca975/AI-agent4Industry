@@ -7,8 +7,10 @@ from langgraph.types import Command
 
 @tool
 def observe_scene(runtime: ToolRuntime[AgentContext]) -> str:
-    """Observe the current scene and return the detected objects and the graph of transit path in symbolic form,
-    ready to build the PDDL problem. Use this tool at the beginning, before generating the problem."""
+    """Return the objects currently in the scene and the transit graph (topology),
+    in symbolic form. Use it whenever you need to know what is present, where things
+    are, their colors, or how locations are connected — both to ANSWER QUESTIONS about
+    the scene and to build a PDDL problem for a manipulation task."""
 
     success, objects, paths, info = runtime.context.scene_client.observe_scene()
     if not success:
@@ -52,7 +54,9 @@ def observe_scene(runtime: ToolRuntime[AgentContext]) -> str:
 
 @tool
 def get_domain(runtime: ToolRuntime[AgentContext]) -> str:
-    """Read the current PDDL domain. Use this when you need to know the domain to generate a coherent problem"""
+    """Return the current PDDL domain: types, predicates and actions. Use it to ANSWER
+    QUESTIONS about what the robot can do (its actions) or about the domain structure,
+    and to build a PDDL problem consistent with the domain."""
 
     success, domain, info = runtime.context.domain_client.get_domain()
     if success:
@@ -61,25 +65,39 @@ def get_domain(runtime: ToolRuntime[AgentContext]) -> str:
 
 
 @tool
-def send_problem(runtime: ToolRuntime[AgentContext]) -> str:
+def send_problem(runtime: ToolRuntime[AgentContext]) -> Command:
     """Load the generated PDDL problem in the system. Use this after generating the problem; it is read from the agent state"""
 
     problem_str = runtime.state.get("cur_problem")
     if not problem_str:
-        return "No problem generated yet"
+        return Command(update={
+            "messages":[ToolMessage(content="No problem generated yet", tool_call_id=runtime.tool_call_id)]
+        })
     success, info = runtime.context.problem_client.add_problem(problem_str)
     if success:
-        return "Problem sent successfully"
-    return f"Error while sending the problem: {info}"
+        return Command(update={
+            "load_status": "ok",
+            "messages":[ToolMessage(content="Problem sent successfully", tool_call_id=runtime.tool_call_id)]
+        })
+    return Command(update={
+        "load_status": "failed",
+        "messages":[ToolMessage(content=f"Error while sending the problem: {info}", tool_call_id=runtime.tool_call_id)]
+    })
 
 @tool
-def clear_problem(runtime: ToolRuntime[AgentContext]) -> str:
+def clear_problem(runtime: ToolRuntime[AgentContext]) -> Command:
     """Clear the current problem knowledge in the system. Use this when you want to reset the problem knowledge"""
 
     success, info = runtime.context.problem_client.clear_problem_knowledge()
     if success:
-        return "Problem knowledge cleared successfully"
-    return f"Error while clearing the problem knowledge: {info}"
+        return Command(update={
+            "cur_problem": None,
+            "load_status": None,
+            "messages":[ToolMessage(content="Problem knowledge cleared successfully", tool_call_id=runtime.tool_call_id)]
+        })
+    return Command(update={
+        "messages":[ToolMessage(content=f"Error while clearing the problem knowledge: {info}", tool_call_id=runtime.tool_call_id)]
+    })
 
 @tool
 def get_plan(runtime: ToolRuntime[AgentContext]):
@@ -131,12 +149,10 @@ def set_problem(problem_str:str, runtime: ToolRuntime[AgentContext]) -> Command:
     """Store the generated problem in the agent state, to be later sent to the system with the send_problem tool.
     Pass the full PDDL problem as a single string. Call this once you have written the problem"""
 
-    # State-mutating tools return a Command(update=...) rather than a plain string: the
-    # ToolMessage (carrying tool_call_id) is the tool's reply, the rest writes the state.
-
     return Command(
         update={
             "cur_problem": problem_str,
+            "load_status": None,
             "messages":[
                 ToolMessage(
                     content="Problem stored in the agent state.",

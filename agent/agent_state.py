@@ -16,3 +16,5 @@ class AgentState(TypedDict):
     phase: Literal["idle","running","complete","replan", "emergency", "fault"]
     replan_count : int                                                          # obstacle hit DURING execution (a move got blocked); capped by MAX_REPLAN
     no_plan_count : int                                                         # planning cycles that produces no solvable plan; capped by MAX_NO_PLAN
+    load_status: Optional[Literal["ok", "failed"]]                              # outcome of send_problem this cycle; None = not sent yet
+    incomplete_flow_count: int                                                  # incomplete manipulation flows left by the LLM (problem setted, not carried to a plan); capped by MAX_INCOMPLETE
