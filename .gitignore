@@ -3,5 +3,7 @@ build
 install
 log
 agent-env
-__pycache__
+__pycache__/
 cancel_test.py
+.vscode/
+.pytest_cache/

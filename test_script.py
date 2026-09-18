@@ -1,33 +1,33 @@
 #!/usr/bin/env python3
 """
-Test director for the reactive replanning validation.
+Test director for the naive (LLM-as-planner) agent's replanning validation.
 
-The persistent stack (driver, world model, monitor, PlanSys2, performers, agent)
-is launched by hand. This script drives a SINGLE scenario: it prepares the scene,
-injects/removes a human at the right moment, and logs the event sequence so the
-operator can compare it against the expected oracle.
+The persistent stack (driver, world model, env_perception, agent) is launched by
+hand. This script drives ONE scenario: it clears the scene, then injects a human
+on a chosen node either before planning or the moment the arm starts moving, and
+logs the events so the operator can compare against the expected oracle.
 
-Two modes:
+Unlike the formalizer director, there is no PlanSys2 action stream to trigger on.
+Motion is detected from the driver's arm state (tcp_speed on
+/arm_1/niryo_robot/robot_state).
 
-  single  wait for a given action on a given target, then inject a human on a
-          chosen node; optionally remove it after T seconds.
-              --on move:home:wp1  --inject wp1                 (persistent)
-              --on move:home:wp1  --inject wp1  --transient 2  (transient)
-              --on pick:workspace_1 --inject workspace_1       (on a pick)
+Modes:
 
-  static  write one or more humans BEFORE the agent plans, then do nothing. Used
-          to make the planner fail to find a plan.
-              --inject wp1,wp2
+  static   write the human(s) BEFORE the agent observes, then do nothing. The
+           agent sees the arc already BLOCKED and must route around it.
+               --mode static --inject wp1
 
-Node coordinates (areas and home) come from zones.csv; waypoints are derived the
-same way world_model_server does, so the injected human lands exactly on the node.
+  on_move  wait until the arm starts moving (tcp_speed over threshold), then
+           inject; optionally remove after T seconds (transient obstacle).
+               --mode on_move --inject wp1                 (persistent)
+               --mode on_move --inject wp1 --transient 2   (transient)
 
-Scenarios:
-  1 baseline     (no director)
-  2 transient    single --on move:home:wp1 --inject wp1 --transient 2
-  3 replan       single --on move:home:wp1 --inject wp1
-  4 emergency    single --on pick:workspace_1 --inject workspace_1
-  5 fault/noplan static --inject wp1,wp2
+  manual   inject when the operator presses Enter; remove on the next Enter (or
+           after --transient seconds). Full timing control for demos.
+               --mode manual --inject wp1
+
+Node coordinates come from zones.csv; waypoints are derived exactly like
+world_model_server, so an injected human lands on the real node.
 """
 
 import os
@@ -40,7 +40,7 @@ import threading
 
 import rclpy
 from rclpy.node import Node
-from plansys2_msgs.msg import ActionExecutionInfo
+from niryo_ned_ros2_interfaces.msg import RobotState
 
 HOME = os.path.expanduser('~/AI-agent4Industry')
 SCENE_FILE = os.path.join(HOME, 'scenes', 'scene.json')
@@ -49,11 +49,14 @@ ZONES_FILE = os.path.join(HOME, 'src', 'niryo_world_model', 'config', 'zones.csv
 # must match world_model_server params
 WAYPOINT_OFFSETS = [0.02, 0.22]
 
+# arm counts as "moving" above this tcp_speed (m/s); tune if it fires too early/late
+MOVE_SPEED_THRESHOLD = 0.01
+
 
 def load_nodes() -> dict:
     """Return {node_name: (x, y)} for every area, home, and derived waypoint,
     reproducing world_model_server so injected humans land on the real nodes."""
-    areas = []          # (name, x, y) in CSV order
+    areas = []
     nodes = {}
 
     with open(ZONES_FILE) as f:
@@ -66,7 +69,6 @@ def load_nodes() -> dict:
             if kind == 'area':
                 areas.append((name, x, y))
 
-    # derive waypoints between consecutive stations, exactly like generate_waypoints
     wp_index = 1
     for i in range(len(areas) - 1):
         _, ax, ay = areas[i]
@@ -125,26 +127,21 @@ class Director(Node):
         self._transient = args.transient
         self._fired = False
 
-        if args.on:
-            act, *rest = args.on.split(':')
-            self._on_action = act
-            self._on_args = rest       # ['home','wp1'] for move, ['workspace_1'] for pick
-        else:
-            self._on_action = None
-            self._on_args = []
-
-        # always start from a human-free scene so the agent plans normally
+        # always start human-free so the agent's first observation is clean
         write_scene(clear_humans(load_scene()))
 
         if self._mode == 'static':
             self._do_inject()
-            self.get_logger().warn(
-                f"STATIC: humans placed on {self._inject} before planning")
-        else:
+            self.get_logger().warn(f"STATIC: humans on {self._inject} before observing")
+
+        elif self._mode == 'on_move':
             self._sub = self.create_subscription(
-                ActionExecutionInfo, '/action_execution_info', self._on_info, 100)
+                RobotState, '/arm_1/niryo_robot/robot_state', self._on_state, 10)
             self.get_logger().info(
-                f"SINGLE: waiting for {self._on_action}{self._on_args} to inject on {self._inject}")
+                f"ON_MOVE: waiting for the arm to move, then inject on {self._inject}")
+
+        elif self._mode == 'manual':
+            threading.Thread(target=self._manual_loop, daemon=True).start()
 
     def _do_inject(self):
         scene = load_scene()
@@ -155,45 +152,43 @@ class Director(Node):
             x, y = self._nodes[node]
             scene["objects"].append(human_entry(f"person_{i+1}", x, y))
         write_scene(scene)
+        self.get_logger().warn(f"INJECTED on {self._inject}")
 
-    def _on_info(self, msg: ActionExecutionInfo):
-        if self._fired or msg.status != ActionExecutionInfo.EXECUTING:
-            return
-        if msg.action != self._on_action:
-            return
-        # move: args are [robot, from, to] -> match from/to; pick/place: [robot, area, piece]
-        if self._on_action == 'move':
-            if len(msg.arguments) < 3 or list(msg.arguments[1:3]) != self._on_args:
-                return
-        else:
-            if len(msg.arguments) < 2 or [msg.arguments[1]] != self._on_args:
-                return
+    def _remove(self):
+        write_scene(clear_humans(load_scene()))
+        self.get_logger().warn("REMOVED humans")
 
+    def _on_state(self, msg: RobotState):
+        if self._fired or msg.tcp_speed < MOVE_SPEED_THRESHOLD:
+            return
         self._fired = True
+        self.get_logger().warn(f"arm moving (tcp_speed={msg.tcp_speed:.3f})")
         self._do_inject()
-        self.get_logger().warn(
-            f"INJECTED on {self._inject} while executing "
-            f"{self._on_action}{list(msg.arguments[1:])}")
-
         if self._transient is not None:
             threading.Thread(target=self._remove_after, daemon=True).start()
 
     def _remove_after(self):
         time.sleep(self._transient)
-        write_scene(clear_humans(load_scene()))
-        self.get_logger().warn(f"REMOVED after {self._transient}s (transient obstacle)")
+        self._remove()
+        self.get_logger().warn(f"(transient: removed after {self._transient}s)")
+
+    def _manual_loop(self):
+        input("\n[director] Press Enter to INJECT...")
+        self._do_inject()
+        if self._transient is not None:
+            time.sleep(self._transient)
+            self._remove()
+        else:
+            input("[director] Press Enter to REMOVE...")
+            self._remove()
 
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('--mode', choices=['single', 'static'], required=True)
+    p.add_argument('--mode', choices=['static', 'on_move', 'manual'], required=True)
     p.add_argument('--inject', required=True, help='node(s) to occupy, comma-separated')
-    p.add_argument('--on', help='trigger as action:arg1[:arg2], e.g. move:home:wp1 or pick:workspace_1')
     p.add_argument('--transient', type=float, default=None, help='remove human after T seconds')
     args = p.parse_args()
-
-    if args.mode == 'single' and not args.on:
-        raise SystemExit("--on is required in single mode")
 
     nodes = load_nodes()
 
