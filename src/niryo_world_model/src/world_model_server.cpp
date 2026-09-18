@@ -1,5 +1,5 @@
-#include <fstream>
-#include <sstream>
+#include <chrono>
+#include <stdexcept>
 #include <cmath>
 #include "world_model_server.hpp"
 
@@ -7,24 +7,20 @@
 
 WorldModelServer::WorldModelServer() : Node("world_model_server")
 {
-    declare_parameter("zones_file", "");
     declare_parameter("zone_thresholds", 0.15);
     declare_parameter("grasp_threshold", 0.05);
     declare_parameter("staleness_threshold", 1.0);
     declare_parameter("arm_name","arm_1");
     declare_parameter("class_to_type", vector<string>{});
-    declare_parameter("waypoint_offsets", vector<double>{0.02, 0.22});
-    declare_parameter("waypoint_height",0.35);
+    declare_parameter("waypoint_prefix","wp");
     declare_parameter("human_radius", 0.08);
     declare_parameter("path_clearance", 0.08);
 
-    string csv_path = get_parameter("zones_file").as_string();
     zone_thresholds = get_parameter("zone_thresholds").as_double();
     grasp_threshold_ = get_parameter("grasp_threshold").as_double();
     staleness_threshold_ = get_parameter("staleness_threshold").as_double();
     arm_name_ = get_parameter("arm_name").as_string();
-    waypoint_offsets_ = get_parameter("waypoint_offsets").as_double_array();
-    waypoint_height_ = get_parameter("waypoint_height").as_double();
+    waypoint_prefix_ = get_parameter("waypoint_prefix").as_string();
     human_radius_ = get_parameter("human_radius").as_double();
     path_clearance_ = get_parameter("path_clearance").as_double();
 
@@ -40,10 +36,9 @@ WorldModelServer::WorldModelServer() : Node("world_model_server")
         class_to_type_[entry.substr(0,sep)] = entry.substr(sep + 1);
     }
 
-    //Order matters: generate_waypoints() must run before build_arcs(), which
-    // wires the freshly created waypoints to home.
-    read_zones(csv_path);
-    generate_waypoints();
+    // Areas and waypoints are library poses saved on the robot, fetched from the
+    // driver at startup.
+    load_zones_from_robot();
     build_arcs();
     
     // 0 = "never received": check_freshness() treats a zero stamp as "no data yet".
@@ -95,140 +90,91 @@ WorldModelServer::WorldModelServer() : Node("world_model_server")
 }
 
 
-void WorldModelServer::read_zones(const string& filename)
+void WorldModelServer::load_zones_from_robot()
 {
-    ifstream file(filename);
+    auto loader = std::make_shared<Node>("world_model_loader");
 
-    if(!file.is_open()){
-        RCLCPP_ERROR(get_logger(), "Could not open file: %s", filename.c_str());
-        return;
+    const string pose_list_service = "/arm_1/niryo_robot_poses_handlers/get_pose_list";
+    const string pose_service = "/arm_1/niryo_robot_poses_handlers/get_pose";
+
+    auto pose_list_client = loader->create_client<GetPoseList>(pose_list_service);
+    auto pose_client = loader->create_client<GetPose>(pose_service);
+
+    const auto timeout = chrono::seconds(30);
+    if (!pose_list_client->wait_for_service(timeout) || !pose_client->wait_for_service(timeout)){
+        RCLCPP_FATAL(get_logger(),
+            "poses_handlers services unavailable: is the driver up? Aborting.");
+        throw runtime_error("world_model_server: poses_handlers services unavailable");
+    }
+    // 1) Names of every saved pose.
+    auto list_req = std::make_shared<GetPoseList::Request>();
+    auto list_fut = pose_list_client->async_send_request(list_req);
+    if (spin_until_future_complete(loader, list_fut, timeout) != FutureReturnCode::SUCCESS){
+        RCLCPP_FATAL(get_logger(), "get_pose_list call failed. Aborting.");
+        throw runtime_error("world_model_server: get_pose_list failed");
     }
 
-    string line;
-    while(getline(file,line)){
-        istringstream ss(line);
-        string name, type;
-        double x,y,z,r,p,yaw;
-        char sep;
+    auto list_resp = list_fut.get();
+    if (list_resp->status != 1){
+        RCLCPP_FATAL(get_logger(), "get_pose_list returned status %d: %s",
+            list_resp->status, list_resp->message.c_str());
+        throw runtime_error("world_model_server: get_pose_list bad status");
+    }
 
-        // name and type are comma-delimited; the six pose fields are then read
-        // numerically, with the commas between them absorbed into 'sep' and dropped.
-        getline(ss,name,',');
-        getline(ss,type,',');
-        ss >> x >> sep >> y >> sep >> z >> sep >> r >> sep >> p >> sep >> yaw;
-
-        //Only the areas live in the config: they are a static map
-        if(type != SceneObject::AREA && type != SceneObject::WAYPOINT){
-            RCLCPP_WARN(get_logger(),
-                "Ignoring non-location row '%s': objects come from /env/scene",
-                name.c_str());
+    // 2) Full pose of each name; classify AREA vs WAYPOINT by name prefix.
+    for (const auto& name : list_resp->name_list){
+        auto pose_req = std::make_shared<GetPose::Request>();
+        pose_req->name = name;
+        auto pose_fut = pose_client->async_send_request(pose_req);
+ 
+        if (spin_until_future_complete(loader, pose_fut, timeout) != FutureReturnCode::SUCCESS){
+            RCLCPP_WARN(get_logger(), "get_pose('%s') call failed: skipped", name.c_str());
             continue;
         }
-        
-
-        // stations_ keeps AREA names in file order: generate_waypoints() pairs,
-        // them consecutively, so the CSV row order defines which stations get
-        // a waypoint pair between them.
-        if (type == SceneObject::AREA){
-            stations_.push_back(name);
+ 
+        auto pose_resp = pose_fut.get();
+        if (pose_resp->status != 1){
+            RCLCPP_WARN(get_logger(), "get_pose('%s') status %d: skipped",
+                name.c_str(), pose_resp->status);
+            continue;
         }
-        
-        GetZone::Response response;
-        response.position.x = x;
-        response.position.y = y;
-        response.position.z = z;
-        response.rpy.roll = r;
-        response.rpy.pitch = p;
-        response.rpy.yaw = yaw;
-        response.type = type;
-
-        zones_[name] = response;
-        
+ 
+        const auto& p = pose_resp->pose;
+ 
+        GetZone::Response record;
+        record.position.x = p.position.x;
+        record.position.y = p.position.y;
+        record.position.z = p.position.z;
+        record.rpy.roll = p.rpy.roll;
+        record.rpy.pitch = p.rpy.pitch;
+        record.rpy.yaw = p.rpy.yaw;
+ 
+        const bool is_wp = (name == HOME_NODE) || (name.rfind(waypoint_prefix_, 0) == 0);
+        record.type = is_wp ? SceneObject::WAYPOINT : SceneObject::AREA;
+ 
+        zones_[name] = record;
+        RCLCPP_INFO(get_logger(), "Loaded zone '%s' (%s) at (%.3f, %.3f, %.3f)",
+            name.c_str(), record.type.c_str(),
+            record.position.x, record.position.y, record.position.z);
     }
 }
 
 void WorldModelServer::build_arcs()
 {
-    for (const auto& [name, zone] : zones_){
-        if (zone.type == SceneObject::WAYPOINT && name != HOME_NODE)
-            arcs_.emplace_back(HOME_NODE, name);
+    arcs_ = {
+        {"conveyor", "wp1"}, {"wp1", "workspace"},
+        {"conveyor", "wp2"}, {"wp2", "workspace"},
+        {HOME_NODE,  "wp1"}, {HOME_NODE,  "wp2"}
+    };
+ 
+    for (const auto& [from, to] : arcs_){
+        if (zones_.find(from) == zones_.end())
+            RCLCPP_ERROR(get_logger(), "Arc endpoint '%s' is not a known zone", from.c_str());
+        if (zones_.find(to) == zones_.end())
+            RCLCPP_ERROR(get_logger(), "Arc endpoint '%s' is not a known zone", to.c_str());
     }
-
-    RCLCPP_INFO(get_logger(),
-        "Graph build with %zu undirect arcs", arcs_.size());
-}
-
-
-void WorldModelServer::generate_waypoints()
-{
-    if (stations_.size() < 2){
-        RCLCPP_WARN(get_logger(), "Fewer than two stations: no waypoint generated");
-        return;
-    }
-
-    size_t wp_index = 1;
-    for (size_t i = 0; i+1 < stations_.size(); i++){
-
-        vector<string> pair_wps;
-        const auto& a = zones_.at(stations_[i]).position;
-        const auto& b = zones_.at(stations_[i+1]).position;
-
-        // ref = midpoint of the two stations; the waypoints sit on the line
-        // perpendiculare to AB through this midpoint.
-        double ref_x = 0.5 * (a.x + b.x);
-        double ref_y = 0.5 * (a.y + b.y);
-
-        // (nx, ny) = AB rotated 90 degrees, i.e. the direction perpendicular to
-        // the segment. Normalized below.
-        double nx = -(b.y - a.y);
-        double ny = (b.x - a.x);
-        double norm = sqrt(nx*nx + ny*ny);
-
-        if (norm < 1e-6){
-            RCLCPP_ERROR(get_logger(),
-                "Station '%s' and '%s' overlap in XY: waypoints not generated",
-                stations_[i].c_str(), stations_[i+1].c_str()
-            );
-            continue;
-        }
-        nx /= norm;
-        ny /= norm;
-
-        // Force the normal to point away from the base (origin). Both stations
-        // are equidistant from the base, so this asymmetric push is what makes
-        // the arm route around the outer side of the shared workspace instead of
-        // cutting across it between the two stations.
-        if (nx*ref_x + ny*ref_y < 0.0){
-            nx = -nx;
-            ny = -ny;
-        }
-
-        // Two offsets = inner/outer arc, both on the outer side; fixed transit
-        // height and orientation
-        for (double offset : waypoint_offsets_){
-            GetZone::Response wp;
-            wp.position.x = ref_x + offset*nx;
-            wp.position.y = ref_y + offset*ny;
-            wp.position.z = waypoint_height_;
-            wp.rpy.roll = 0.0;
-            wp.rpy.pitch = 0.1085;
-            wp.rpy.yaw = 0.0;
-            wp.type = SceneObject::WAYPOINT;
-
-            string name = "wp" + to_string(wp_index++);
-            zones_[name] = wp;
-            pair_wps.push_back(name);
-
-            RCLCPP_INFO(get_logger(), "Generated waypoint '%s' at (%.3f, %.3f, %.3f)",
-                name.c_str(), wp.position.x, wp.position.y, wp.position.z);
-        }
-
-        // Chain the pair into the graph: station_i <-> wp <-> station_{i+1}.
-        for (const auto& wp_name : pair_wps){
-            arcs_.emplace_back(stations_[i], wp_name);
-            arcs_.emplace_back(wp_name, stations_[i+1]);
-        }
-    }
+ 
+    RCLCPP_INFO(get_logger(), "Graph built with %zu undirected arcs", arcs_.size());
 }
 
 void WorldModelServer::on_scene(const EnvScene::SharedPtr msg)

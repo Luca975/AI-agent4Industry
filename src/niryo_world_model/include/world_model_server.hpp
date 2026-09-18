@@ -30,6 +30,8 @@
 #include "niryo_env_interfaces/msg/env_scene.hpp"
 #include "niryo_env_interfaces/msg/tool_status.hpp"
 #include "niryo_ned_ros2_interfaces/msg/robot_state.hpp"
+#include "niryo_ned_ros2_interfaces/srv/get_name_description_list.hpp"
+#include "niryo_ned_ros2_interfaces/srv/get_pose.hpp"
 #include "geometry_msgs/msg/point.hpp"
 
 #include <string>
@@ -50,6 +52,8 @@ using CheckNode = niryo_world_interfaces::srv::CheckNode;
 using EnvScene = niryo_env_interfaces::msg::EnvScene;
 using ToolStatus = niryo_env_interfaces::msg::ToolStatus;
 using RobotState = niryo_ned_ros2_interfaces::msg::RobotState;
+using GetPoseList = niryo_ned_ros2_interfaces::srv::GetNameDescriptionList;
+using GetPose = niryo_ned_ros2_interfaces::srv::GetPose;
 
 /** 
  *      @brief One detected object in the live scene, in the internal representation.
@@ -82,19 +86,7 @@ class WorldModelServer : public Node
          * perception, not config); AREA rows are additionally recorded in @ref stations_ in file order.
          * @param filename Absolute path to the zones CSV.
          */
-        void read_zones(const string& filename);
-
-        /**
-         * @brief Synthesize a pair of via-waypoints between each consecutive
-         *        station pair and add the corresponding arcs.
-         *
-         * For stations A,B the waypoints sit on the perpendicular bisector of
-         * AB, pushed to the *outer* side (away from the robot base) so the arm
-         * routes around the shared workspace instead of across it. Both offsets
-         * in @ref waypoint_offsets_ (inner/outer arc) are placed at fixed
-         * @ref waypoint_height_. Requires at least two stations.
-         */        
-        void generate_waypoints();
+        void load_zones_from_robot();
 
         /**
          * @brief Connect HOME_NODE to every waypoint, completing the graph.
@@ -208,7 +200,6 @@ class WorldModelServer : public Node
 
         // --- Static map (built at startup, never mutated afterwards) ---------------
         map<string, GetZone::Response> zones_;              ///< Name -> zone pose+type. Reuses GetZone::Response as the storage record. 
-        vector<string> stations_;                           ///< AREA names in CSV order (input to waypoint pairing).
         vector<pair<string, string>> arcs_;                 ///< Undirected edges, stored once; emitted both ways in observe_scene.
 
         // --- Live state ------------------------------------------------------------
@@ -224,12 +215,11 @@ class WorldModelServer : public Node
         bool tool_received_;                                ///< Whether any ToolStatus has arrived (gripper assumed open until then).
 
         // --- Configuration parameters -----------------------------------------
-    string arm_name_;                                       ///< Symbolic name emitted for the arm in observe_scene
+        string arm_name_;                                       ///< Symbolic name emitted for the arm in observe_scene
         double zone_thresholds;                             ///< Max distance for a generic locatable to resolve to a zone.
         double grasp_threshold_;                            ///< Max arm-to-piece distance to consider a piece held
         double staleness_threshold_;                        ///< Max stream age (s) before observe_scene refuses.
-        vector<double> waypoint_offsets_;                   ///< Perpendicular offsets (inner/outer arc) for generated waypoints.
-        double waypoint_height_;                            ///< Fixed z of generated waypoints.
+        string waypoint_prefix_;                            ///< Name prefix marking a saved pose as a transit WAYPOINT (else AREA).
         double human_radius_;                               ///< Occupancy radius of a human (node and human-zone matching).
         double path_clearance_;                             ///< Min human-to-segment- distance for an arc to count as a clear.
 
