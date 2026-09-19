@@ -32,10 +32,10 @@ class DomainExpert(PlanSys2ClientBase):
 
         if response is None:
             info=f"Service call to {self._get_domain_client.srv_name} failed"
-            self.get_logger().error(info)
+            #self.get_logger().error(info)
             return False,"",info
         if not response.success:
             info=f"Service call to {self._get_domain_client.srv_name} returned failure: {response.error_info}"
-            self.get_logger().error(info)
+            #self.get_logger().error(info)
             return False,"",info
         return True, response.domain, response.error_info

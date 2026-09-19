@@ -42,7 +42,7 @@ class ProblemExpert(PlanSys2ClientBase):
             return False, f"Service call to {self._add_client.srv_name} failed or timed out"
         
         if not response.success:
-            self.get_logger().error(f"add_problem failed: {response.error_info}")
+            #self.get_logger().error(f"add_problem failed: {response.error_info}")
             return False, response.error_info
 
         return True,response.error_info
@@ -56,7 +56,7 @@ class ProblemExpert(PlanSys2ClientBase):
             return False, f"Service call to {self._clear_knowledge_client.srv_name} failed or timed out"
         
         if not response.success:
-            self.get_logger().error(f"clear_problem_knowledge failed: {response.error_info}")
+            #self.get_logger().error(f"clear_problem_knowledge failed: {response.error_info}")
             return False, response.error_info
 
 

@@ -4,7 +4,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from agent_state import AgentState
 from agent_tools import tools
-from agent_nodes import idle_node, llm_node, running_node, emergency_node, recover_node, MAX_NO_PLAN
+from agent_nodes import idle_node, llm_node, running_node, emergency_node, recover_node, MAX_NO_PLAN, MAX_STEPS
 from agent_context import AgentContext
 
 def route_from_idle(state:AgentState)->str:
@@ -18,7 +18,7 @@ def route_from_llm(state: AgentState) -> str:
 
     1. pending tool calls        -> tools     : the model wants to call a tool; run it.
     2. a plan is ready           -> running   : cur_plan is set, hand off to execution.
-    3. planner already failed     -> emergency : no_plan_count > 0 means get_plan was
+    3. planner already failed     -> emergency : no_plan_count > MAX_NO_PLAN means get_plan was
                                                 called and found nothing; deterministic escape.
     4. a problem was defined     -> recover   : no tool call, no plan, planner never
                                                 complained, yet cur_problem is set. The model
@@ -31,12 +31,16 @@ def route_from_llm(state: AgentState) -> str:
     The discriminator between a finished query (5) and an abandoned manipulation (4) is
     cur_problem, read from state — never inferred from message text. A query never sets it.
     """
+
+    if state.get("step_count",0)>=MAX_STEPS:
+        return "fault"
+
     last = state["messages"][-1]
     if getattr(last, "tool_calls", None):
         return "tools"
     if state.get("cur_plan") is not None:
         return "running"
-    if state.get("no_plan_count", 0) > 0:
+    if state.get("no_plan_count", 0) > MAX_NO_PLAN:
         return "emergency"
     if state.get("cur_problem") is not None:
         return "recover"
@@ -94,7 +98,8 @@ builder.add_conditional_edges("llm",route_from_llm,{
     "idle":"idle",
     "running":"running",
     "emergency":"emergency",
-    "recover":"recover"
+    "recover":"recover",
+    "fault":"idle"
 })
 builder.add_conditional_edges("tools", route_from_tools, {
     "llm":"llm",

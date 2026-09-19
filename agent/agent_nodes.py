@@ -12,6 +12,7 @@ from agent_tools import tools
 MAX_REPLAN = 3
 MAX_NO_PLAN = 3
 MAX_INCOMPLETE = 2
+MAX_STEPS = 20
 
 #llm = ChatAnthropic(model="claude-sonnet-4-6", temperature=0).bind_tools(tools)
 
@@ -22,6 +23,15 @@ llm = ChatOpenAI(
     temperature=0,
     extra_body={"stop": ["</tool_call>"]}
 ).bind_tools(tools)
+
+# Same endpoint, NO tools: used only to summarize a finished task in plain prose.
+# Without this, the tool-bound llm could emit a tool_call instead of a summary.
+llm_base = ChatOpenAI(
+    base_url=os.environ.get("VLLM_BASE_URL", "http://192.168.100.162:8001/v1"),
+    model=os.environ.get("VLLM_MODEL", "Qwen2.5-3B-Instruct"),
+    api_key="EMPTY",
+    temperature=0
+)
 
 SYSTEM_PROMPT = """You are an agent for an industrial robotic cell based on PlanSys2. You act ONLY through
 the available tools. Each tool's description tells you what it does; do not re-derive it.
@@ -154,6 +164,7 @@ def idle_node(state: AgentState)-> AgentState:
     """Prompt the user and start the next task"""
 
     phase = state.get("phase", "idle")
+
     if phase == "complete":
         prompt = "Task complete. What would you like to do next?"
     elif phase == "fault":
@@ -163,6 +174,17 @@ def idle_node(state: AgentState)-> AgentState:
 
     user_input = interrupt(prompt)
 
+    summary_update = {}
+    if phase in ("complete","fault"):
+        task_msgs = state["messages"][state.get("task_start",0):]
+        summary_prompt = [
+            SystemMessage(content=("Summarize in two short sentences what the task asked,"
+            " how it was solved and its outcome (success or failure).")),
+            *task_msgs
+        ]
+        summary = llm_base.invoke(summary_prompt)
+        summary_update["last_summary"] = summary.content
+
     return {
         "messages": [HumanMessage(content=user_input)],
         "phase": "idle",
@@ -171,13 +193,23 @@ def idle_node(state: AgentState)-> AgentState:
         "replan_count": 0,
         "no_plan_count": 0,
         "load_status": None,
-        "incomplete_flow_count": 0
-    }
+        "incomplete_flow_count": 0,
+        "task_start": len(state["messages"]),
+        **summary_update,
+        "step_count": 0
+    }   
 
 def llm_node(state:AgentState)->AgentState:
-    messages = [SystemMessage(content=SYSTEM_PROMPT)]+state["messages"]
-    response = llm.invoke(messages)
-    return {"messages":[response]}
+    curr_prompt = [SystemMessage(content=SYSTEM_PROMPT)]
+
+    if state.get("last_summary"):
+        curr_prompt.append(SystemMessage(content=f"Previous task: {state['last_summary']}"))
+
+    curr_prompt += state["messages"][state.get("task_start",0):]
+    #messages = [SystemMessage(content=SYSTEM_PROMPT)]+state["messages"]
+    response = llm.invoke(curr_prompt)
+    return {"messages":[response],
+            "step_count": state.get("step_count",0)+1}
 
 
 def emergency_node(state: AgentState) -> AgentState:
@@ -192,7 +224,10 @@ def emergency_node(state: AgentState) -> AgentState:
         "replan_count": 0,
         "no_plan_count": 0,
         "load_status": None,
-        "incomplete_flow_count": 0
+        "incomplete_flow_count": 0,
+        "task_start": len(state["messages"]),
+        "last_summary": None,
+        "step_count":0
     }
 
 
@@ -290,5 +325,6 @@ def recover_node(state: AgentState) -> AgentState:
     return {
         "messages": [HumanMessage(content=nudge)],
         "phase": "idle",
-        "incomplete_flow_count": count
+        "incomplete_flow_count": count,
+        "no_plan_count": 0
     }        

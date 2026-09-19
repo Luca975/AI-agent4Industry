@@ -57,7 +57,7 @@ class Executor(PlanSys2ClientBase):
 
         if not self._execute_plan_client.wait_for_server(timeout_sec=5.0):
             info = "Action server /execute_plan not available"
-            self.get_logger().error(info)
+            #self.get_logger().error(info)
             return False, "", info
         
         goal = ExecutePlan.Goal()
@@ -69,13 +69,13 @@ class Executor(PlanSys2ClientBase):
 
         if not goal_done.wait(timeout_sec):
             info = "Timeout waiting for goal acceptance from /execute_plan"
-            self.get_logger().error(info)
+            #self.get_logger().error(info)
             return False, "", info
         
         goal_handle = goal_future.result()
         if goal_handle is None or not goal_handle.accepted:
             info = "Goal rejected by /execute_plan"
-            self.get_logger().error(info)
+            #self.get_logger().error(info)
             return False, "", info
         
         result_done = threading.Event()
@@ -90,13 +90,13 @@ class Executor(PlanSys2ClientBase):
         result=result_future.result()
         if result is None:
             info = "No result returned from /execute_plan"
-            self.get_logger().error(info)
+            #self.get_logger().error(info)
             return False, "", info
         
 
         if not result.result.success:
             action, message = self._failed_action(result.result)
-            self.get_logger().error(f"Plan execution failed on '{action}':{message}")
+            #self.get_logger().error(f"Plan execution failed on '{action}':{message}")
             return False, action, message
         
         return True, "", ""

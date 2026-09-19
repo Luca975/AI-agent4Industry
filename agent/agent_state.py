@@ -18,3 +18,6 @@ class AgentState(TypedDict):
     no_plan_count : int                                                         # planning cycles that produces no solvable plan; capped by MAX_NO_PLAN
     load_status: Optional[Literal["ok", "failed"]]                              # outcome of send_problem this cycle; None = not sent yet
     incomplete_flow_count: int                                                  # incomplete manipulation flows left by the LLM (problem setted, not carried to a plan); capped by MAX_INCOMPLETE
+    task_start: int                                                             # messages' index where the new task begins; the history of the previous tasks is not sended to the LLM
+    last_summary: Optional[str]                                                 # Last task's summary
+    step_count: int                                                             # LLM turns spent on the current task; capped by MAX_STEPS
