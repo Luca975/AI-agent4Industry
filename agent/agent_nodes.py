@@ -178,8 +178,7 @@ def idle_node(state: AgentState)-> AgentState:
     if phase in ("complete","fault"):
         task_msgs = state["messages"][state.get("task_start",0):]
         summary_prompt = [
-            SystemMessage(content=("Summarize in two short sentences what the task asked,"
-            " how it was solved and its outcome (success or failure).")),
+            SystemMessage(content=("Summarize in one sentence, max 30 words: task, outcome")),
             *task_msgs
         ]
         summary = llm_base.invoke(summary_prompt)
