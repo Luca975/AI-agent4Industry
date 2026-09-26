@@ -8,157 +8,191 @@ from langgraph.runtime import Runtime
 from agent_state import AgentState
 from agent_context import AgentContext
 from agent_tools import tools
+from agent_prompts import AGENT_GRAMMAR
 
 MAX_REPLAN = 3
 MAX_NO_PLAN = 3
 MAX_INCOMPLETE = 2
 MAX_STEPS = 20
 
+USE_GRAMMAR = os.environ.get("USE_GRAMMAR","0") == "1"
+_extra_body = {"stop": ["</tool_call>"],
+               "include_stop_str_in_output":True,
+               "chat_template_kwargs":{"enable_thinking":True}}
+if USE_GRAMMAR:
+    _extra_body["guided_grammar"] = AGENT_GRAMMAR
+
 #llm = ChatAnthropic(model="claude-sonnet-4-6", temperature=0).bind_tools(tools)
 
 llm = ChatOpenAI(
     base_url=os.environ.get("VLLM_BASE_URL", "http://192.168.100.162:8001/v1"),
-    model=os.environ.get("VLLM_MODEL", "Qwen2.5-3B-Instruct"),
+    model=os.environ.get("VLLM_MODEL", "Qwen3.5-4B"),
     api_key="EMPTY",
     temperature=0,
-    extra_body={"stop": ["</tool_call>"]}
+    extra_body={"stop": ["</tool_call>"],
+               "include_stop_str_in_output":True,
+               "chat_template_kwargs":{"enable_thinking":True}},
+    reasoning_effort="high",
 ).bind_tools(tools)
 
 # Same endpoint, NO tools: used only to summarize a finished task in plain prose.
 # Without this, the tool-bound llm could emit a tool_call instead of a summary.
 llm_base = ChatOpenAI(
     base_url=os.environ.get("VLLM_BASE_URL", "http://192.168.100.162:8001/v1"),
-    model=os.environ.get("VLLM_MODEL", "Qwen2.5-3B-Instruct"),
+    model=os.environ.get("VLLM_MODEL", "Qwen3.5-4B"),
     api_key="EMPTY",
+    extra_body={"chat_template_kwargs":{"enable_thinking":False}},
     temperature=0
 )
 
-SYSTEM_PROMPT = """You are an agent for an industrial robotic cell based on PlanSys2. You act ONLY through
-the available tools. Each tool's description tells you what it does; do not re-derive it.
+# The SYSTEM_PROMPT below works with Qwen3.5-4B (v1, v2 is in the prompts file) ------------------------------------------------------------------------------------------------------------
 
-=== STEP 0: CLASSIFY THE TASK (decide BEFORE doing anything) ===
-Every user message is one of two kinds:
+# SYSTEM_PROMPT = """You control an industrial robot cell only through tools.
+# One tool call per turn. When the task is DONE (QUERY answered, or get_plan
+# returned a solvable plan), call no more tools and report briefly.
+# You handle two types of task:
+#     -   QUERY (question about the scene or the robot): call observe_scene or get_domain,
+#         answer in plain text, STOP. No PDDL.
 
-- QUERY: a question about the current state (what is present, where, how many, which
-  color, how locations connect, what the robot can do). To answer a QUERY:
-    1. Call the tool that holds the answer (scene facts -> observe_scene; robot actions
-       or domain -> get_domain; call BOTH only if the question needs both).
-    2. Read the tool result, then REPLY IN PLAIN TEXT and STOP.
-    Do NOT write PDDL. Do NOT call set_problem, send_problem or get_plan for a QUERY.
+#     -   MANIPULATION (move, pick or place pieces): call observe_scene and get_domain;
+#         write a domain-consistent PDDL problem and run the CHECKLIST; then call
+#         set_problem, send_problem and get_plan.
+#         When get_plan returns a solvable plan, the task is DONE: call no more tools,
+#         report the plan in one sentence.
+# On error: fix the error by running the CHECKLIST and retry with a correct PDDL problem. If the plan was BLOCKED: restart from observe_scene with a
+# new problem.
 
-    Example A (scene question):
-      User: "How many pieces are in the scene and where are they?"
-      -> call observe_scene
-      -> reply: "There are 2 pieces: cube_1 on workspace_1 and cube_3 held by the arm."  STOP.
+# PDDL RULES
+# - Section 1 lines "name (type[, color]) [-> location]": declare name in :objects with
+#   that type. "-> loc": (at name loc). "-> held by the arm": (holding robot name).
+#   No "->": it is a location. No colors.
+# - Types: keep the exact type observe_scene gives. A (waypoint) is declared
+#   "- waypoint", an (area) is declared "- area". Never change a type.
+# - In :objects write ONE line per type. Every name before "- type" gets that type:
+#   "wp1 wp2 - waypoint" makes both waypoints. Never mix types on one line.
+# - Section 2 "Graph facts": copy verbatim into :init.
+# - Add (available robot) for each robot.
+# - Areas and waypoints are both classified as locations.
+# - clean: for each location L, add (clean L) unless a (human) line says "-> L".
+# - free: for each location L, add (free L) unless it is where the arm is.
 
-    Example B (domain question):
-      User: "What actions can the robot perform?"
-      -> call get_domain
-      -> reply: "The robot can move, pick and place."  STOP.
+# CHECKLIST
+# - Every object and location returned by observe_scene (Section 1 and Graph facts)
+#   is declared in :objects with its type.
+# - Every waypoint is "- waypoint", every area is "- area", one line per type.
+# - Every location has (clean ...) unless a human is on it; every location
+#   except the arm's has (free ...).
+# - Every name in :init and :goal is declared.
+# - Only types and predicates from get_domain.
+# - Graph facts copied exactly. Parentheses balanced.
 
-- MANIPULATION: a task that requires moving/picking/placing pieces. Follow the FLOW below.
+# EXAMPLE (structure only)
+# (define (problem task) (:domain gazebo_world)
+# (:objects
+#     arm_1 - robot
+#     workspace_1 conveyor - area
+#     home wp1 - waypoint
+#     circle_2 - piece
+# )
+# (:init (available arm_1) (at arm_1 home) (at circle_2 workspace_1)
+#   (clean home) (clean workspace_1) (clean conveyor) (clean wp1)
+#   (free workspace_1) (free conveyor) (free wp1)   ; no (free home): the arm is there
+#   ; Graph facts here)
+# (:goal (and (at circle_2 conveyor))))
+# """
+# -------------------------------------------------------------------------------------------
 
-=== GLOBAL RULES (both kinds) ===
-- Call ONE tool per turn. Wait for its result before the next call. Never emit several
-  tool calls in one message.
-- When the task is done (QUERY answered, or plan found), STOP calling tools and briefly
-  report. Do not call any tool once done.
+#--------------------------PROMPT for 9B
+SYSTEM_PROMPT = """You control a robot cell through tools. One tool call per turn.
+There are two kinds of task:
 
-=== MANIPULATION FLOW ===
-1. observe_scene  -> objects + transit graph.
-2. get_domain     -> types, predicates, actions.
-3. Write a PDDL problem for the domain, scene and task.
-4. set_problem    -> store the full PDDL problem (one string).
-5. send_problem   -> load it into PlanSys2.
-6. get_plan       -> verify a plan exists.
-If a step errors, read it, fix the problem, retry.
+    ORDER — the robot must act. Always run the STEPS. Never reply with words instead of acting.
 
-=== REPLANNING (MANIPULATION only) ===
-If you receive a message saying the previous plan was BLOCKED and you must replan:
-- Do NOT reuse or edit the old problem, and do NOT retry the same plan.
-- RESTART the flow from observe_scene: the scene has changed, so read it fresh.
-- Build a completely NEW PDDL problem from the new Graph facts, then set/send/get_plan again.
+    QUESTION — "where", "how many", "what": call observe_scene or get_domain, answer
+    in words, stop. No PDDL.
 
-Two kinds of location:
-- areas: stations where pieces are picked/placed (e.g. workspace, conveyor).
-- waypoints: transit points the arm moves through (e.g. home, wp1, wp2).
-The arm picks/places ONLY on areas; it travels through waypoints, never operating there.
+STEPS — do them in this order, one per turn:
+1. observe_scene
+2. get_domain
+3. write the problem
+4. check the problem
+5. clear_problem
+6. set_problem
+7. send_problem
+8. get_plan
+If step 8 says "No plan found", or any tool returns an error: rewrite the problem
+and go back to step 5.
+If a message says the plan was blocked: go back to step 1 and write a new problem
+from the new scene.
 
-observe_scene returns two sections.
+HOW TO WRITE THE PROBLEM
+:objects — one line per type, "<names> - <type>". Types: robot, area, waypoint,
+  piece, human.
+:init —
+  (available arm_1)
+  (at X P) for each "-> P" line, object first, place second. Only a robot, a piece
+    or a human. An area or a waypoint never gets an (at ...).
+    "-> held by the arm" becomes (holding arm_1 X), with no (at ...) for it.
+  every "Graph facts" line, copied exactly: they all start with (connected ...).
+    Never add a (clean_path ...) that is not printed: a missing one means a human
+    blocks that segment, and adding it sends the arm into the human.
+  (clean L) for every area and every waypoint, except where a human is.
+  (free L) for every area and every waypoint, except where the arm is.
+:goal — (at cube_1 conveyor) to move a piece, (at arm_1 home) to move only the arm.
+Nothing else: no colors, no :precondition, no :action.
 
-SECTION 1 - "Objects in the scene", one line per object/location:
-  "name (type[, color])" optionally "-> location".
-- The type in parentheses is authoritative. Declare each object in :objects with that
-  exact type: (area), (waypoint), (robot), (piece).
-- "-> <location>": emit (at <name> <location>).
-- "-> held by the arm": emit (holding <robot> <name>); emit NO (at <name> ...) for it.
-- no "->": it is a location, not a thing in a location; emit no (at ...) for it.
-- color: only to identify the piece. NEVER put color in the PDDL.
-- (human) lines: obstacles. Do NOT declare them and emit NO fact for them. Skip them.
+CHECK before set_problem: count the areas and waypoints; (clean) and (free) must
+match that count minus their exception; the (clean_path) count must equal the one in
+the Graph facts; every name used is in :objects; parentheses balanced.
 
-SECTION 2 - "Graph facts": lines of (connected ...) and (clean_path ...).
-COPY THEM VERBATIM into :init. Do NOT invent, add, drop or reorder arcs. This section is
-the authoritative topology.
-- (connected a b): the arm can travel directly a -> b.
-- (clean_path a b): that segment is human-free. A (connected a b) line with NO matching
-  (clean_path a b) is blocked by a human: leave it so; the planner routes around it.
+=== START OF EXAMPLE — these names are not the real ones ===
 
-Facts YOU add, from Section 1:
-- (available <robot>) for every robot.
-- (clean <location>) for every location with NO human on it. If a (human) is "-> <loc>",
-  omit (clean <loc>). Arm and pieces do NOT affect cleanliness.
-- (free <location>) for every location EXCEPT the one where the arm is.
+Task: "move the blue block to station_b"
 
-:objects rules:
-- Declare EVERY item listed in SECTION 1 (objects) AND every node in the Graph facts,
-  each with the exact type observe_scene gave it.
-- This INCLUDES every piece. A piece you must move (e.g. cube_1) MUST appear in :objects
-  as "cube_1 - piece". Forgetting a piece makes the problem INVALID.
-- Any fact naming an undeclared object makes the planner reject the problem.
-- Do not declare humans or anything that is not in Section 1 or the Graph facts.
+observe_scene printed:
+block_7 (piece, blue) -> station_a
+worker_2 (human) -> w2
+arm_1 (robot) -> base
+station_a (area)
+station_b (area)
+base (waypoint)
+w1 (waypoint)
+w2 (waypoint)
 
-FORMAT EXAMPLE (adapt to the REAL scene and task - do not copy these values):
+Graph facts (copy these verbatim into :init):
+(connected base w1) (clean_path base w1)
+(connected w1 station_a) (clean_path w1 station_a)
+(connected station_a w2)
 
-(define (problem test) (:domain gazebo_world)
+The correct problem:
+(define (problem task)
+(:domain gazebo_world)
 (:objects
     arm_1 - robot
-    workspace_1 conveyor - area
-    circle_2 - piece          ; every piece MUST be declared here
-    wp1 wp2 home - waypoint
+    station_a station_b - area
+    base w1 w2 - waypoint
+    block_7 - piece
+    worker_2 - human
 )
 (:init
     (available arm_1)
-    (at circle_2 workspace_1)
-    (at arm_1 home)
-
-    (clean home) (clean workspace_1) (clean conveyor) (clean wp1) (clean wp2)
-
-    (free workspace_1) (free conveyor) (free wp1) (free wp2)
-
-    (connected home wp1)      (connected wp1 home)
-    (connected home wp2)      (connected wp2 home)
-    (connected workspace_1 wp1) (connected wp1 workspace_1)
-    (connected wp1 conveyor)  (connected conveyor wp1)
-    (connected workspace_1 wp2) (connected wp2 workspace_1)
-    (connected wp2 conveyor)  (connected conveyor wp2)
-
-    (clean_path home wp1)      (clean_path wp1 home)
-    (clean_path home wp2)      (clean_path wp2 home)
-    (clean_path workspace_1 wp1) (clean_path wp1 workspace_1)
-    (clean_path wp1 conveyor)  (clean_path conveyor wp1)
-    (clean_path workspace_1 wp2) (clean_path wp2 workspace_1)
-    (clean_path wp2 conveyor)  (clean_path conveyor wp2)
+    (at arm_1 base)
+    (at block_7 station_a)
+    (at worker_2 w2)
+    (clean station_a) (clean station_b) (clean base) (clean w1)
+    (free station_a) (free station_b) (free w1) (free w2)
+    (connected base w1) (clean_path base w1)
+    (connected w1 station_a) (clean_path w1 station_a)
+    (connected station_a w2)
 )
-(:goal (and
-    (at circle_2 conveyor)
-))
+(:goal (and (at block_7 station_b)))
 )
 
-Here home has no (free) because the arm is there; every node has (clean) because no human
-is present; a blocked arc would keep (connected) but lose (clean_path).
+5 locations, so 4 (clean) because w2 has the human and 4 (free) because base has
+the arm. The w2 arc keeps no (clean_path).
+
+=== END OF EXAMPLE — always use the real names observe_scene gives you ===
 """
-
-
 
 def idle_node(state: AgentState)-> AgentState:
     """Prompt the user and start the next task"""
@@ -199,10 +233,12 @@ def idle_node(state: AgentState)-> AgentState:
     }   
 
 def llm_node(state:AgentState)->AgentState:
-    curr_prompt = [SystemMessage(content=SYSTEM_PROMPT)]
+    #curr_prompt = [SystemMessage(content=SYSTEM_PROMPT)]
 
+    system = SYSTEM_PROMPT
     if state.get("last_summary"):
-        curr_prompt.append(SystemMessage(content=f"Previous task: {state['last_summary']}"))
+        system += f"\n\nPrevious task: {state['last_summary']}"
+    curr_prompt = [SystemMessage(content=system)]
 
     curr_prompt += state["messages"][state.get("task_start",0):]
     #messages = [SystemMessage(content=SYSTEM_PROMPT)]+state["messages"]

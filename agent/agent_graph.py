@@ -62,7 +62,9 @@ def route_from_running(state:AgentState)->str:
 def route_from_tools(state:AgentState)->str:
     """Guard the planning loop: once MAX_NO_PLAN cycles have failed to yield a
     solvable plan, escalate to emergency instead of letting the LLM retry forever.
-    """    
+    """
+    if state.get("cur_plan") is not None:
+        return "running"
     if state.get("no_plan_count",0) >= MAX_NO_PLAN:
         return "emergency"
     return "llm"
@@ -103,6 +105,7 @@ builder.add_conditional_edges("llm",route_from_llm,{
 })
 builder.add_conditional_edges("tools", route_from_tools, {
     "llm":"llm",
+    "running":"running",
     "emergency":"emergency"
 })
 
