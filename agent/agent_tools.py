@@ -64,102 +64,105 @@ def get_domain(runtime: ToolRuntime[AgentContext]) -> str:
     return f"Error while reading the domain: {info}"
 
 
-@tool
-def send_problem(runtime: ToolRuntime[AgentContext]) -> Command:
-    """Load the generated PDDL problem in the system. Use this after generating the problem; it is read from the agent state"""
+# @tool
+# def send_problem(runtime: ToolRuntime[AgentContext]) -> Command:
+#     """Load the generated PDDL problem in the system. Use this after generating the problem; it is read from the agent state"""
 
-    problem_str = runtime.state.get("cur_problem")
-    if not problem_str:
-        return Command(update={
-            "messages":[ToolMessage(content="No problem generated yet", tool_call_id=runtime.tool_call_id)]
-        })
-    success, info = runtime.context.problem_client.add_problem(problem_str)
-    if success:
-        return Command(update={
-            "load_status": "ok",
-            "messages":[ToolMessage(content="Problem sent successfully", tool_call_id=runtime.tool_call_id)]
-        })
-    return Command(update={
-        "load_status": "failed",
-        "messages":[ToolMessage(content=f"Error while sending the problem: {info}", tool_call_id=runtime.tool_call_id)]
-    })
+#     problem_str = runtime.state.get("cur_problem")
+#     if not problem_str:
+#         return Command(update={
+#             "messages":[ToolMessage(content="No problem generated yet", tool_call_id=runtime.tool_call_id)]
+#         })
+#     success, info = runtime.context.problem_client.add_problem(problem_str)
+#     if success:
+#         return Command(update={
+#             "load_status": "ok",
+#             "messages":[ToolMessage(content="Problem sent successfully", tool_call_id=runtime.tool_call_id)]
+#         })
+#     return Command(update={
+#         "load_status": "failed",
+#         "messages":[ToolMessage(content=f"Error while sending the problem: {info}", tool_call_id=runtime.tool_call_id)]
+#     })
 
-@tool
-def clear_problem(runtime: ToolRuntime[AgentContext]) -> Command:
-    """Clear the current problem knowledge in the system. Use this when you want to reset the problem knowledge"""
+# @tool
+# def clear_problem(runtime: ToolRuntime[AgentContext]) -> Command:
+#     """Clear the current problem knowledge in the system. Use this when you want to reset the problem knowledge"""
 
-    success, info = runtime.context.problem_client.clear_problem_knowledge()
-    if success:
-        return Command(update={
-            "cur_problem": None,
-            "load_status": None,
-            "messages":[ToolMessage(content="Problem knowledge cleared successfully", tool_call_id=runtime.tool_call_id)]
-        })
-    return Command(update={
-        "messages":[ToolMessage(content=f"Error while clearing the problem knowledge: {info}", tool_call_id=runtime.tool_call_id)]
-    })
+#     success, info = runtime.context.problem_client.clear_problem_knowledge()
+#     if success:
+#         return Command(update={
+#             "cur_problem": None,
+#             "load_status": None,
+#             "messages":[ToolMessage(content="Problem knowledge cleared successfully", tool_call_id=runtime.tool_call_id)]
+#         })
+#     return Command(update={
+#         "messages":[ToolMessage(content=f"Error while clearing the problem knowledge: {info}", tool_call_id=runtime.tool_call_id)]
+#     })
 
-@tool
-def get_plan(runtime: ToolRuntime[AgentContext]):
-    """Ask the planner whether a plan exists for the current domain and problem.
-    Use this after loading the problem, to verify if it is solvable"""
+# @tool
+# def get_plan(runtime: ToolRuntime[AgentContext]):
+#     """Ask the planner whether a plan exists for the current domain and problem.
+#     Use this after loading the problem, to verify if it is solvable"""
 
-    ok_domain, domain, info = runtime.context.domain_client.get_domain()
-    if not ok_domain:
-        return f"Error while reading the domain: {info}"
+#     ok_domain, domain, info = runtime.context.domain_client.get_domain()
+#     if not ok_domain:
+#         return f"Error while reading the domain: {info}"
     
-    problem_str = runtime.state.get("cur_problem")
-    if not problem_str:
-        return "No problem generated yet"
+#     problem_str = runtime.state.get("cur_problem")
+#     if not problem_str:
+#         return "No problem generated yet"
     
-    success, plan, info = runtime.context.planner_client.get_plan(domain, problem_str)
+#     success, plan, info = runtime.context.planner_client.get_plan(domain, problem_str)
 
-    if not success:
-        # Bump the planning-loop guard: route_from_tools escalates to emergency once
-        # this reaches MAX_NO_PLAN, and route_from_llm uses it as the deterministic
-        # escape when the LLM stops calling tools without a plan. Reset to 0 on success        
-        count = runtime.state.get("no_plan_count",0) + 1
-        return Command(
-            update={
-                "no_plan_count":count,
-                "messages":[
-                    ToolMessage(
-                        content=f"No plan found: {info}",
-                        tool_call_id=runtime.tool_call_id
-                    )
-                ]
-            }
-        )
+#     if not success:
+#         # Bump the planning-loop guard: route_from_tools escalates to emergency once
+#         # this reaches MAX_NO_PLAN, and route_from_llm uses it as the deterministic
+#         # escape when the LLM stops calling tools without a plan. Reset to 0 on success        
+#         count = runtime.state.get("no_plan_count",0) + 1
+#         return Command(
+#             update={
+#                 "no_plan_count":count,
+#                 "messages":[
+#                     ToolMessage(
+#                         content=f"No plan found: {info}",
+#                         tool_call_id=runtime.tool_call_id
+#                     )
+#                 ]
+#             }
+#         )
     
-    return Command(
-        update={
-            "cur_plan": plan,
-            "no_plan_count": 0,
-            "messages":[
-                ToolMessage(
-                    content="Plan found: the problem is solvable",
-                    tool_call_id=runtime.tool_call_id
-                )
-            ]
-        }
-    )
+#     return Command(
+#         update={
+#             "cur_plan": plan,
+#             "no_plan_count": 0,
+#             "messages":[
+#                 ToolMessage(
+#                     content="Plan found: the problem is solvable",
+#                     tool_call_id=runtime.tool_call_id
+#                 )
+#             ]
+#         }
+#     )
 
 @tool
 def set_problem(problem_str:str, runtime: ToolRuntime[AgentContext]) -> Command:
-    """Store the generated problem in the agent state, to be later sent to the system with the send_problem tool.
-    Pass the full PDDL problem as a single string. Call this once you have written the problem"""
+    """Submit the PDDL problem you wrote. Pass the full PDDL problem as a single string.
+    The system then loads it and plans automatically: if you receive an error, fix the
+    problem and call set_problem again."""
 
+    # planning_status = "pending" is the signal route_from_tools uses to enter planning_node
     return Command(
         update={
             "cur_problem": problem_str,
-            "load_status": None,
+            "planning_status": "pending",
             "messages":[
                 ToolMessage(
-                    content="Problem stored in the agent state.",
+                    content="Problem received. Loading and planning it now.",
                     tool_call_id=runtime.tool_call_id,
                 )
             ],
         }
     )
 
-tools = [observe_scene, get_domain, send_problem, clear_problem, get_plan, set_problem]
+#tools = [observe_scene, get_domain, send_problem, clear_problem, get_plan, set_problem]
+tools = [observe_scene, get_domain, set_problem]
