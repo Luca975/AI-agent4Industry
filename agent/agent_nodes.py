@@ -16,9 +16,32 @@ MAX_NO_PLAN = 3
 MAX_INCOMPLETE = 2
 MAX_STEPS = 20
 SYSTEM_PROMPT = SYSTEM_PROMPT_27B
-#llm = ChatAnthropic(model="claude-sonnet-4-6", temperature=0).bind_tools(tools)
 
-llm = ChatOpenAI(
+class ChatLLM(ChatOpenAI):
+    def _create_chat_result(self, response, generation_info = None):
+        result = super()._create_chat_result(response, generation_info)
+        resp = response if isinstance(response, dict) else response.model_dump()
+        for gen, choice in zip(result.generations, resp.get("choices", [])):
+            msg = choice.get("message") or {}
+            reasoning = msg.get("reasoning_content") or msg.get("reasoning")
+            if reasoning:
+                gen.message.additional_kwargs["reasoning_content"] = reasoning
+        return result
+    def _convert_chunk_to_generation_chunk(self, chunk, default_chunk_class, base_generation_info):
+        gen = super()._convert_chunk_to_generation_chunk(chunk, default_chunk_class, base_generation_info)
+        if gen is None:
+            return None
+        choices = chunk.get("choices") or []
+        if choices:
+            delta = choices[0].get("delta") or {}
+            reasoning = delta.get("reasoning_content") or delta.get("reasoning")
+            if reasoning:
+                gen.message.additional_kwargs["reasoning_content"] = reasoning
+        return gen
+
+
+#llm = ChatAnthropic(model="claude-sonnet-4-6", temperature=0).bind_tools(tools)
+llm = ChatLLM(
     base_url=os.environ.get("VLLM_BASE_URL", "http://192.168.100.162:8001/v1"),
     model=os.environ.get("VLLM_MODEL", "Qwen3.5-4B"),
     api_key="EMPTY",
@@ -131,8 +154,9 @@ def planning_node(state: AgentState, runtime:Runtime[AgentContext])->AgentState:
             "messages": [HumanMessage(content=(
                 f"PROBLEM REJECTED {attempt}.\n"
                 f"Error: {info}\n"
-                "The problem is not valid PDDL for the current domain: fix the error reported above "
-                "(undeclared objects, types or predicates not in the domain, syntax).\n"
+                "The problem is not valid PDDL for the current domain: the error could be related EITHER to "
+                "undeclared objects, types or predicates not defined in the domain OR you missed some declaration(s) in "
+                "the 'objects:' section or 'init:' section. Check the RULES again and RE-OBSERVE the scene if needed\n"
                 "Next: call set_problem with the complete corrected problem."))],
             "planning_status": "rejected",
             "no_plan_count": count,
