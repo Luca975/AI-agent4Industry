@@ -35,7 +35,7 @@ by this project.
 
 The repo root is the colcon workspace:
 ```
-AI-agent4Industry/                     # repo = colcon workspace
+autonomous_nyrio/                     # repo = colcon workspace
 ├── pddl/                              # PDDL domain + problem template
 ├── scenes/
 │   └── scene.json                     # live scene description (edited outside packages)
@@ -64,8 +64,8 @@ AI-agent4Industry/                     # repo = colcon workspace
 These are the packages built for this project — all steps below.
  
 ```bash
-git clone https://github.com/Luca975/AI-agent4Industry
-cd AI-AGENT4INDUSTRY
+git clone https://github.com/dessertlab/autonomous_nyrio.git
+cd autonomous_nyrio
  
 # Build the C++ packages
 source /opt/ros/jazzy/setup.bash
@@ -113,7 +113,7 @@ The system requires **two terminals**, run in this order from the host:
 ### Terminal 1 — ROS2 stack
  
 ```bash
-cd ~/AI-agent4Industry
+cd ~/autonomous_nyrio
 source /opt/ros/jazzy/setup.bash
 source /home/luca/ros2_drivers_ws/install/setup.bash
 source install/setup.bash
@@ -123,7 +123,7 @@ ros2 launch bringup.launch.py
 ### Terminal 2 — LangGraph agent
  
 ```bash
-cd ~/AI-agent4Industry
+cd ~/autonomous_nyrio
 source /opt/ros/jazzy/setup.bash
 source /home/luca/ros2_drivers_ws/install/setup.bash
 source install/setup.bash
