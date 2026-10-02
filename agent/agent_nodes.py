@@ -9,13 +9,12 @@ from agent_state import AgentState
 from agent_context import AgentContext
 from agent_tools import tools
 #from agent_prompts import AGENT_GRAMMAR
-from agent_prompts import *
+from agent_prompts import SYSTEM_PROMPT
 
 MAX_REPLAN = 3
 MAX_NO_PLAN = 3
 MAX_INCOMPLETE = 2
 MAX_STEPS = 20
-SYSTEM_PROMPT = SYSTEM_PROMPT_27B
 
 class ChatLLM(ChatOpenAI):
     def _create_chat_result(self, response, generation_info = None):
