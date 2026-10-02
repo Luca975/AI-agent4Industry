@@ -30,12 +30,12 @@ class SceneObserver(PlanSys2ClientBase):
 
         if response is None:
             info=f"Service call to {self._observe_scene_client.srv_name} failed"
-            self.get_logger().error(info)
+            #self.get_logger().error(info)
             return False, [], [], info
         
         if not response.success:
             info = response.error_info or f"Service {self._observe_scene_client.srv_name} returned failure without error_info"
-            self.get_logger().warn(info)
+            #self.get_logger().warn(info)
             return False, [], [], info
         
         objects = [(obj.name, obj.type, obj.location, obj.held, obj.color)for obj in response.objects]

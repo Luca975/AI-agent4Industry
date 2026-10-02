@@ -1,143 +1,68 @@
 from langchain_core.messages import SystemMessage,HumanMessage,AIMessage
-from langchain_anthropic import ChatAnthropic
+#from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 from langgraph.types import interrupt
 from langgraph.runtime import Runtime
 
 from agent_state import AgentState
 from agent_context import AgentContext
 from agent_tools import tools
+from agent_prompts import SYSTEM_PROMPT
 
 MAX_REPLAN = 3
 MAX_NO_PLAN = 3
+MAX_INCOMPLETE = 2
+MAX_STEPS = 20
 
-llm = ChatAnthropic(model="claude-sonnet-4-6", temperature=0).bind_tools(tools)
+class ChatLLM(ChatOpenAI):
+    def _create_chat_result(self, response, generation_info = None):
+        result = super()._create_chat_result(response, generation_info)
+        resp = response if isinstance(response, dict) else response.model_dump()
+        for gen, choice in zip(result.generations, resp.get("choices", [])):
+            msg = choice.get("message") or {}
+            reasoning = msg.get("reasoning_content") or msg.get("reasoning")
+            if reasoning:
+                gen.message.additional_kwargs["reasoning_content"] = reasoning
+        return result
+    def _convert_chunk_to_generation_chunk(self, chunk, default_chunk_class, base_generation_info):
+        gen = super()._convert_chunk_to_generation_chunk(chunk, default_chunk_class, base_generation_info)
+        if gen is None:
+            return None
+        choices = chunk.get("choices") or []
+        if choices:
+            delta = choices[0].get("delta") or {}
+            reasoning = delta.get("reasoning_content") or delta.get("reasoning")
+            if reasoning:
+                gen.message.additional_kwargs["reasoning_content"] = reasoning
+        return gen
 
+#llm = ChatAnthropic(model="claude-sonnet-4-6", temperature=0).bind_tools(tools)
+llm = ChatLLM(
+    base_url=os.environ.get("VLLM_BASE_URL", "http://192.168.100.162:8001/v1"),
+    model=os.environ.get("VLLM_MODEL", "Qwen3.5-4B"),
+    api_key="EMPTY",
+    temperature=0,
+    extra_body={"stop": ["</tool_call>"],
+               "include_stop_str_in_output":True,
+               "chat_template_kwargs":{"enable_thinking":True}},
+    reasoning_effort="high",
+).bind_tools(tools)
 
-SYSTEM_PROMPT = """You are a planning agent for an industrial robotic system based on PlanSys2.
-Your job is to translate a user task into a valid PDDL problem, load it into PlanSys2,
-and verify that it is solvable.
-
-You interact with PlanSys2 through tools. Follow this procedure:
-
-1. Call observe_scene to see the objects and the transit graph.
-2. Call get_domain to read the PDDL domain (types, predicates, actions).
-3. Write a PDDL problem consistent with the domain, the observed scene and the user task.
-4. Call set_problem with the full PDDL problem (a single string) to store it.
-5. Call send_problem to load it into PlanSys2.
-6. Call get_plan to verify that a plan exists.
-
-The world has two kinds of location:
-- areas: work stations where pieces are picked and placed (e.g. workspace, conveyor).
-- waypoints: transit points the arm moves through between stations (e.g. home, wp1, wp2).
-The arm picks and places ONLY on areas; it travels through waypoints, never operating there.
-
-observe_scene returns two sections.
-
-SECTION 1 - "Objects in the scene". One line per object or location:
-  "name (type[, color])" optionally followed by "-> location".
-- The type in parentheses is authoritative. Declare each object in :objects with exactly
-  that type: (area), (waypoint), (robot), (piece).
-- "-> <location>": the object is there. Emit (at <name> <location>).
-- "-> held by the arm": the piece is in the gripper. Emit (holding <robot> <name>) and do
-  NOT emit any (at <name> ...) fact for it.
-- no "->": the object/location is not itself located anywhere. Areas and waypoints have no
-  "->" (they are locations, not things in a location); emit no (at ...) fact for them.
-- color is only to help you identify which piece the task refers to. Never put it in the
-  PDDL: the domain has no color predicate.
-- humans: a line with type (human) marks a person detected in the cell. Humans are
-  obstacles, never manipulated. Do NOT declare them in :objects and do NOT emit any fact
-  for them. Their effect is already encoded for you: the arcs they block simply lack their
-  (clean_path ...) line in Section 2, and you must omit the (clean ...) line for the node
-  they occupy (see below). Skip every (human) line when writing objects and (at ...) facts.
-
-SECTION 2 - "Graph facts". Lines of (connected ...) and (clean_path ...) already written
-for you. COPY THEM VERBATIM into :init. Do NOT invent, add, drop or reorder arcs, and do
-not derive them yourself: this section is the authoritative topology.
-- (connected a b): the arm can travel directly from a to b.
-- (clean_path a b): that segment is currently free of humans. An arc that has a
-  (connected a b) line but NO (clean_path a b) line is blocked by a human: leave it so,
-  the planner must route around it.
-
-Facts you must add yourself, from Section 1:
-- (available <robot>) for every robot.
-- (clean <location>) for every location where NO human is reported. If a (human) line
-  reports a human "-> <location>", that location is NOT clean: omit its (clean ...). The
-  arm and the pieces do NOT affect cleanliness: a location holding only the arm or only
-  pieces is still clean.
-- (free <location>) for every location EXCEPT the one where the arm is. The set of
-  locations is every node named in the Graph facts. (free) means no other arm occupies it;
-  with a single arm every node is free except the arm's own.
-
-Rules for :objects:
-- every location named in the Graph facts MUST be declared, with the type observe_scene
-  gave it. A fact referencing an undeclared object makes the planner fail.
-- do not declare some_place, humans, or any location that is not a graph node.
-
-Example (FORMAT ONLY - adapt to the real scene and task):
-
-(define (problem test) (:domain gazebo_world)
-(:objects 
-    arm_1 - robot
-    workspace_1 conveyor - area
-    circle_2 - piece
-    wp1 wp2 home - waypoint
+# Same endpoint, NO tools: used only to summarize a finished task in plain prose.
+# Without this, the tool-bound llm could emit a tool_call instead of a summary.
+llm_base = ChatOpenAI(
+    base_url=os.environ.get("VLLM_BASE_URL", "http://192.168.100.162:8001/v1"),
+    model=os.environ.get("VLLM_MODEL", "Qwen3.5-4B"),
+    api_key="EMPTY",
+    extra_body={"chat_template_kwargs":{"enable_thinking":False}},
+    temperature=0
 )
-
-(:init
-    (available arm_1)
-    (at circle_2 workspace_1)
-    (at arm_1 home)
-
-    (clean home)
-    (clean workspace_1)
-    (clean conveyor)
-    (clean wp1)
-    (clean wp2)
-
-    (free workspace_1)
-    (free conveyor)
-    (free wp1)
-    (free wp2)
-
-    (connected home wp1)      (connected wp1 home)
-    (connected home wp2)      (connected wp2 home)
-    (connected workspace_1 wp1) (connected wp1 workspace_1)
-    (connected wp1 conveyor)  (connected conveyor wp1)
-    (connected workspace_1 wp2) (connected wp2 workspace_1)
-    (connected wp2 conveyor)  (connected conveyor wp2)
-
-    (clean_path home wp1)      (clean_path wp1 home)
-    (clean_path home wp2)      (clean_path wp2 home)
-    (clean_path workspace_1 wp1) (clean_path wp1 workspace_1)
-    (clean_path wp1 conveyor)  (clean_path conveyor wp1)
-    (clean_path workspace_1 wp2) (clean_path wp2 workspace_1)
-    (clean_path wp2 conveyor)  (clean_path conveyor wp2) 
-
-)
-
-(:goal (and
-    (at circle_2 conveyor)
-))
-)
-
-
-In the example: home has no (free) because the arm is there; every node has (clean) because
-no human is present; a blocked arc would keep its (connected) line but lose its (clean_path).
-
-If a step returns an error, read it, fix the problem, and retry the relevant steps.
-If a message tells you a previous plan was blocked and you must replan, start again from
-observe_scene: the scene has changed and the fresh observation reflects it. Build a new
-problem from the new Graph facts, do not reuse the previous one.
-When a plan is found, STOP calling tools and briefly report success. Do not call any tool
-once the problem is solved.
-"""
-
-
 
 def idle_node(state: AgentState)-> AgentState:
     """Prompt the user and start the next task"""
 
     phase = state.get("phase", "idle")
+
     if phase == "complete":
         prompt = "Task complete. What would you like to do next?"
     elif phase == "fault":
@@ -147,25 +72,122 @@ def idle_node(state: AgentState)-> AgentState:
 
     user_input = interrupt(prompt)
 
+    summary_update = {}
+    if phase in ("complete","fault"):
+        task_msgs = state["messages"][state.get("task_start",0):]
+        summary_prompt = [
+            SystemMessage(content=("Summarize in one sentence, max 30 words: task, outcome")),
+            *task_msgs
+        ]
+        summary = llm_base.invoke(summary_prompt)
+        summary_update["last_summary"] = summary.content
+
     return {
         "messages": [HumanMessage(content=user_input)],
         "phase": "idle",
         "cur_problem": None,
         "cur_plan": None,
         "replan_count": 0,
-        "no_plan_count": 0
+        "no_plan_count": 0,
+        "planning_status": None,
+        "incomplete_flow_count": 0,
+        "task_start": len(state["messages"]),
+        **summary_update,
+        "step_count": 0
     }
 
 def llm_node(state:AgentState)->AgentState:
-    messages = [SystemMessage(content=SYSTEM_PROMPT)]+state["messages"]
-    response = llm.invoke(messages)
-    return {"messages":[response]}
 
+    system = SYSTEM_PROMPT
+    if state.get("last_summary"):
+        system += f"\n\nPrevious task: {state['last_summary']}"
+    curr_prompt = [SystemMessage(content=system)]
+
+    curr_prompt += state["messages"][state.get("task_start",0):]
+    #messages = [SystemMessage(content=SYSTEM_PROMPT)]+state["messages"]
+    response = llm.invoke(curr_prompt)
+    return {"messages":[response],
+            "step_count": state.get("step_count",0)+1}
+
+def planning_node(state: AgentState, runtime:Runtime[AgentContext])->AgentState:
+
+    ctx = runtime.context
+    problem = (state.get("cur_problem") or "").strip()
+    count = state.get("no_plan_count", 0) + 1
+    attempt = f"(attempt {count}/{MAX_NO_PLAN})"
+
+    if not problem:
+        return {
+            "messages": [HumanMessage(content=(
+                f"NO PROBLEM RECEIVED {attempt}: set_problem was called with an empty string.\n"
+                "Write the complete PDDL problem (objects, initial state, goal) from the current "
+                "scene and domain.\n"
+                "Next: call set_problem with the complete problem."))],
+            "planning_status": "rejected",
+            "no_plan_count": count,
+        }
+
+    opened, closed = problem.count("("), problem.count(")")
+    if opened != closed:
+        return {
+            "messages": [HumanMessage(content=(
+                f"PROBLEM REJECTED {attempt}.\n"
+                f"Error: unbalanced parentheses ({opened} opened, {closed} closed).\n"
+                "Next: call set_problem with the complete corrected problem."))],
+            "planning_status": "rejected",
+            "no_plan_count": count,
+        }
+
+    ok, info = ctx.problem_client.clear_problem_knowledge()
+    if not ok:
+        return {"messages": [AIMessage(content=f"System error while clearing the previous problem: {info}.")],
+                "phase": "fault"}
+
+    ok, info = ctx.problem_client.add_problem(problem)
+    if not ok:
+        return {
+            "messages": [HumanMessage(content=(
+                f"PROBLEM REJECTED {attempt}.\n"
+                f"Error: {info}\n"
+                "The problem is not valid PDDL for the current domain: the error could be related EITHER to "
+                "undeclared objects, types or predicates not defined in the domain OR you missed some declaration(s) in "
+                "the 'objects:' section or 'init:' section. Check the RULES again and RE-OBSERVE the scene if needed\n"
+                "Next: call set_problem with the complete corrected problem."))],
+            "planning_status": "rejected",
+            "no_plan_count": count,
+        }
+
+    ok, domain, info = ctx.domain_client.get_domain()
+    if not ok:
+        return {"messages": [AIMessage(content=f"System error while reading the domain: {info}.")],
+                "phase": "fault"}
+ 
+    ok, plan, info = ctx.planner_client.get_plan(domain, problem)
+    if not ok:
+        return {
+            "messages": [HumanMessage(content=(
+                f"NO PLAN FOUND {attempt}.\n"
+                f"Planner output: {info}\n"
+                "The problem is valid, but the goal is not reachable from the initial state. "
+                "Compare the initial state and the goal with the latest scene observation.\n"
+                "Do not add facts the scene does not report just to make the goal reachable.\n"
+                "Next: if you find a mistake, call set_problem with the corrected problem; "
+                "otherwise call observe_scene, the scene may have changed."))],
+            "planning_status": "no_plan",
+            "no_plan_count": count,
+        }
+ 
+    return {
+        "messages": [AIMessage(content="Plan found. Executing it.")],
+        "cur_plan": plan,
+        "planning_status": "solved",
+        "no_plan_count": 0,
+    }
 
 def emergency_node(state: AgentState) -> AgentState:
     user_input = interrupt(
-        "EMERGENCY: a persistent obstacle stopped the operation. "
-        "Resolve the situation, then tell me how to proceed.")
+        "EMERGENCY: planning/replanning attempts expired or a station is blocked! "
+        "Check the area for safety reasons and press space to restart")
 
     return {
         "messages": [HumanMessage(content=user_input)],
@@ -173,7 +195,12 @@ def emergency_node(state: AgentState) -> AgentState:
         "cur_problem": None,
         "cur_plan": None,
         "replan_count": 0,
-        "no_plan_count": 0
+        "no_plan_count": 0,
+        "planning_status": None,
+        "incomplete_flow_count": 0,
+        "task_start": len(state["messages"]),
+        "last_summary": None,
+        "step_count":0
     }
 
 
@@ -208,12 +235,13 @@ def running_node(state: AgentState, runtime:Runtime[AgentContext])->AgentState:
             return {
                 "messages":[HumanMessage(content=(
                     f"The plan was blocked: {message}. "
-                    f"Re-observe the scene and build a new plan "
+                    f"Re-observe the scene and build a new problem "
                     f"(replan attempt {count}/{MAX_REPLAN})."))],
                 "phase": "replan",
                 "replan_count": count,
                 "cur_plan" : None,
-                "cur_problem" : None
+                "cur_problem" : None,
+                "planning_status": None
             }
         return {
             "messages": [AIMessage(content=(
@@ -236,15 +264,34 @@ def running_node(state: AgentState, runtime:Runtime[AgentContext])->AgentState:
     }
 
 
-# def safe_pos_node(state:AgentState, runtime:Runtime[AgentContext])->AgentState:
-    
-#     success,info = runtime.context.home_pos_client.go_home()
-#     if success:
-#         msg = "Execution failed. Arm moved back to the home position"
-#     else:
-#         msg = f"Execution failed. Arm cannot move back to home: {info}"
-
-#     return{
-#         "messages":[AIMessage(content=msg)],
-#         "phase":"failed"
-#     }
+def recover_node(state: AgentState) -> AgentState:
+    """planning_node rejected the problem or found no plan, and the LLM answered in words
+    instead of calling set_problem again. Nudge it back, up to MAX_INCOMPLETE times, then
+    degrade to fault."""
+ 
+    count = state.get("incomplete_flow_count",0)+1
+ 
+    if count > MAX_INCOMPLETE:
+        return {
+            "messages": [AIMessage(content=("The model repeatedly stopped without submitting a valid problem."))],
+            "phase":"fault",
+            "incomplete_flow_count":count,
+            "cur_problem":None,
+            "cur_plan":None,
+            "planning_status": None
+        }
+ 
+    if state.get("planning_status") == "no_plan":
+        nudge = ("The task is not done: the last problem has no plan (see above). "
+                 "Do not answer in text.\n"
+                 "Next: call set_problem with a corrected problem, or observe_scene if the scene may have changed.")
+    else:
+        nudge = ("The task is not done: the last problem was rejected (see above). "
+                 "Do not answer in text.\n"
+                 "Next: call set_problem with the complete corrected problem.")
+ 
+    return {
+        "messages": [HumanMessage(content=nudge)],
+        "phase": "idle",
+        "incomplete_flow_count": count
+    }

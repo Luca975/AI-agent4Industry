@@ -16,3 +16,9 @@ class AgentState(TypedDict):
     phase: Literal["idle","running","complete","replan", "emergency", "fault"]
     replan_count : int                                                          # obstacle hit DURING execution (a move got blocked); capped by MAX_REPLAN
     no_plan_count : int                                                         # planning cycles that produces no solvable plan; capped by MAX_NO_PLAN
+    planning_status: Optional[Literal["pending", "rejected", "no_plan",
+                                      "solved"]]                                # status of cur_problem; "pending" = set by set_problem, waiting for planning_node; None = no problem
+    incomplete_flow_count: int                                                  # incomplete manipulation flows left by the LLM (problem setted, not carried to a plan); capped by MAX_INCOMPLETE
+    task_start: int                                                             # messages' index where the new task begins; the history of the previous tasks is not sended to the LLM
+    last_summary: Optional[str]                                                 # Last task's summary
+    step_count: int                                                             # LLM turns spent on the current task; capped by MAX_STEPS

@@ -60,71 +60,71 @@ def get_domain(runtime: ToolRuntime[AgentContext]) -> str:
     return f"Error while reading the domain: {info}"
 
 
-@tool
-def send_problem(runtime: ToolRuntime[AgentContext]) -> str:
-    """Load the generated PDDL problem in the system. Use this after generating the problem; it is read from the agent state"""
+# @tool
+# def send_problem(runtime: ToolRuntime[AgentContext]) -> str:
+#     """Load the generated PDDL problem in the system. Use this after generating the problem; it is read from the agent state"""
 
-    problem_str = runtime.state.get("cur_problem")
-    if not problem_str:
-        return "No problem generated yet"
-    success, info = runtime.context.problem_client.add_problem(problem_str)
-    if success:
-        return "Problem sent successfully"
-    return f"Error while sending the problem: {info}"
+#     problem_str = runtime.state.get("cur_problem")
+#     if not problem_str:
+#         return "No problem generated yet"
+#     success, info = runtime.context.problem_client.add_problem(problem_str)
+#     if success:
+#         return "Problem sent successfully"
+#     return f"Error while sending the problem: {info}"
 
-@tool
-def clear_problem(runtime: ToolRuntime[AgentContext]) -> str:
-    """Clear the current problem knowledge in the system. Use this when you want to reset the problem knowledge"""
+# @tool
+# def clear_problem(runtime: ToolRuntime[AgentContext]) -> str:
+#     """Clear the current problem knowledge in the system. Use this when you want to reset the problem knowledge"""
 
-    success, info = runtime.context.problem_client.clear_problem_knowledge()
-    if success:
-        return "Problem knowledge cleared successfully"
-    return f"Error while clearing the problem knowledge: {info}"
+#     success, info = runtime.context.problem_client.clear_problem_knowledge()
+#     if success:
+#         return "Problem knowledge cleared successfully"
+#     return f"Error while clearing the problem knowledge: {info}"
 
-@tool
-def get_plan(runtime: ToolRuntime[AgentContext]):
-    """Ask the planner whether a plan exists for the current domain and problem.
-    Use this after loading the problem, to verify if it is solvable"""
+# @tool
+# def get_plan(runtime: ToolRuntime[AgentContext]):
+#     """Ask the planner whether a plan exists for the current domain and problem.
+#     Use this after loading the problem, to verify if it is solvable"""
 
-    ok_domain, domain, info = runtime.context.domain_client.get_domain()
-    if not ok_domain:
-        return f"Error while reading the domain: {info}"
+#     ok_domain, domain, info = runtime.context.domain_client.get_domain()
+#     if not ok_domain:
+#         return f"Error while reading the domain: {info}"
     
-    problem_str = runtime.state.get("cur_problem")
-    if not problem_str:
-        return "No problem generated yet"
+#     problem_str = runtime.state.get("cur_problem")
+#     if not problem_str:
+#         return "No problem generated yet"
     
-    success, plan, info = runtime.context.planner_client.get_plan(domain, problem_str)
+#     success, plan, info = runtime.context.planner_client.get_plan(domain, problem_str)
 
-    if not success:
-        # Bump the planning-loop guard: route_from_tools escalates to emergency once
-        # this reaches MAX_NO_PLAN, and route_from_llm uses it as the deterministic
-        # escape when the LLM stops calling tools without a plan. Reset to 0 on success        
-        count = runtime.state.get("no_plan_count",0) + 1
-        return Command(
-            update={
-                "no_plan_count":count,
-                "messages":[
-                    ToolMessage(
-                        content=f"No plan found: {info}",
-                        tool_call_id=runtime.tool_call_id
-                    )
-                ]
-            }
-        )
+#     if not success:
+#         # Bump the planning-loop guard: route_from_tools escalates to emergency once
+#         # this reaches MAX_NO_PLAN, and route_from_llm uses it as the deterministic
+#         # escape when the LLM stops calling tools without a plan. Reset to 0 on success        
+#         count = runtime.state.get("no_plan_count",0) + 1
+#         return Command(
+#             update={
+#                 "no_plan_count":count,
+#                 "messages":[
+#                     ToolMessage(
+#                         content=f"No plan found: {info}",
+#                         tool_call_id=runtime.tool_call_id
+#                     )
+#                 ]
+#             }
+#         )
     
-    return Command(
-        update={
-            "cur_plan": plan,
-            "no_plan_count": 0,
-            "messages":[
-                ToolMessage(
-                    content="Plan found: the problem is solvable",
-                    tool_call_id=runtime.tool_call_id
-                )
-            ]
-        }
-    )
+#     return Command(
+#         update={
+#             "cur_plan": plan,
+#             "no_plan_count": 0,
+#             "messages":[
+#                 ToolMessage(
+#                     content="Plan found: the problem is solvable",
+#                     tool_call_id=runtime.tool_call_id
+#                 )
+#             ]
+#         }
+#     )
 
 @tool
 def set_problem(problem_str:str, runtime: ToolRuntime[AgentContext]) -> Command:
@@ -146,4 +146,4 @@ def set_problem(problem_str:str, runtime: ToolRuntime[AgentContext]) -> Command:
         }
     )
 
-tools = [observe_scene, get_domain, send_problem, clear_problem, get_plan, set_problem]
+tools = [observe_scene, get_domain, set_problem]

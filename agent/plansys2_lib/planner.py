@@ -30,11 +30,11 @@ class Planner(PlanSys2ClientBase):
 
         if response is None:
             info=f"Service call to {self._get_plan_client.srv_name} failed"
-            self.get_logger().error(info)
+            #self.get_logger().error(info)
             return False, [], info
         if not response.success:
             info=f"Service call to {self._get_plan_client.srv_name} returned failure: {response.error_info}"
-            self.get_logger().warn(info)
+            #self.get_logger().warn(info)
             return False, [], response.error_info
         
         plan : list[PlanStep] = [
