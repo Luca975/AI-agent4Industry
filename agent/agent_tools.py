@@ -19,7 +19,9 @@ def dispatch(
     from_node: str | None = None,
     to_node: str | None = None,
     close:bool | None = None,
-    node: str | None = None
+    node: str | None = None,
+    shape: str | None = None,
+    color: str | None = None
     )->str:
     """Send one command to the robot arm and report its outcome.
 
@@ -71,8 +73,14 @@ def dispatch(
             return f"grip requires {', '.join(missing)}"
         ok, message = driver.grip(close, node)
 
+    elif command == "locate":
+        missing = [n for n, v in (("shape", shape), ("color", color)) if v is None]
+        if missing:
+            return f"locate requires {', '.join(missing)}"
+        ok, result = driver.locate_piece(shape, color)
+        return f"success: grasp pose {result}" if ok else result
     else:
-        return f"unknown command '{command}'; use 'move' or 'grip'"
+        return f"unknown command '{command}'; use 'move', 'grip' or 'locate'"
 
     # Uniform outcome: success prefixed so the LLM tells it apart at a glance;
     # failures pass the client's own reason through unchanged.

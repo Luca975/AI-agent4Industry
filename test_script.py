@@ -2,38 +2,26 @@
 """
 Test director for the naive (LLM-as-planner) agent's replanning validation.
 
-The persistent stack (driver, world model, env_perception, agent) is launched by
-hand. This script drives ONE scenario: it clears the scene, then injects a human
-on a chosen node either before planning or the moment the arm starts moving, and
-logs the events so the operator can compare against the expected oracle.
+Injects a human into scene.json to simulate an obstacle; env_perception publishes
+it, the world model marks the affected arcs/nodes blocked, the agent must react.
 
-Unlike the formalizer director, there is no PlanSys2 action stream to trigger on.
-Motion is detected from the driver's arm state (tcp_speed on
-/arm_1/niryo_robot/robot_state).
+Node positions are fetched from the world model's get_zone service — the SAME
+source it uses for occupancy — so an injected human lands exactly where the world
+model places the node. (The old zones.csv geometry is gone: the world model now
+loads poses from the robot.)
 
 Modes:
-
-  static   write the human(s) BEFORE the agent observes, then do nothing. The
-           agent sees the arc already BLOCKED and must route around it.
+  static   write the human(s) BEFORE the agent observes.
                --mode static --inject wp1
-
-  on_move  wait until the arm starts moving (tcp_speed over threshold), then
-           inject; optionally remove after T seconds (transient obstacle).
-               --mode on_move --inject wp1                 (persistent)
-               --mode on_move --inject wp1 --transient 2   (transient)
-
-  manual   inject when the operator presses Enter; remove on the next Enter (or
-           after --transient seconds). Full timing control for demos.
+  on_move  inject when the arm starts moving (tcp_speed over threshold);
+           optionally remove after T seconds (transient).
+               --mode on_move --inject wp1 [--transient 2]
+  manual   inject on Enter, remove on next Enter (or after --transient).
                --mode manual --inject wp1
-
-Node coordinates come from zones.csv; waypoints are derived exactly like
-world_model_server, so an injected human lands on the real node.
 """
 
 import os
-import csv
 import json
-import math
 import time
 import argparse
 import threading
@@ -41,51 +29,16 @@ import threading
 import rclpy
 from rclpy.node import Node
 from niryo_ned_ros2_interfaces.msg import RobotState
+from niryo_world_interfaces.srv import GetZone
 
 HOME = os.path.expanduser('~/AI-agent4Industry')
 SCENE_FILE = os.path.join(HOME, 'scenes', 'scene.json')
-ZONES_FILE = os.path.join(HOME, 'src', 'niryo_world_model', 'config', 'zones.csv')
 
-# must match world_model_server params
-WAYPOINT_OFFSETS = [0.02, 0.22]
+# The graph nodes the world model knows (see build_arcs in world_model_server).
+GRAPH_NODES = ["home", "workspace", "conveyor", "wp1", "wp2"]
 
-# arm counts as "moving" above this tcp_speed (m/s); tune if it fires too early/late
+# arm counts as "moving" above this tcp_speed (m/s)
 MOVE_SPEED_THRESHOLD = 0.01
-
-
-def load_nodes() -> dict:
-    """Return {node_name: (x, y)} for every area, home, and derived waypoint,
-    reproducing world_model_server so injected humans land on the real nodes."""
-    areas = []
-    nodes = {}
-
-    with open(ZONES_FILE) as f:
-        for row in csv.reader(f):
-            if len(row) < 8:
-                continue
-            name, kind = row[0], row[1]
-            x, y = float(row[2]), float(row[3])
-            nodes[name] = (x, y)
-            if kind == 'area':
-                areas.append((name, x, y))
-
-    wp_index = 1
-    for i in range(len(areas) - 1):
-        _, ax, ay = areas[i]
-        _, bx, by = areas[i + 1]
-        ref_x, ref_y = 0.5 * (ax + bx), 0.5 * (ay + by)
-        nx, ny = -(by - ay), (bx - ax)
-        norm = math.hypot(nx, ny)
-        if norm < 1e-6:
-            continue
-        nx, ny = nx / norm, ny / norm
-        if nx * ref_x + ny * ref_y < 0.0:
-            nx, ny = -nx, -ny
-        for off in WAYPOINT_OFFSETS:
-            nodes[f"wp{wp_index}"] = (ref_x + off * nx, ref_y + off * ny)
-            wp_index += 1
-
-    return nodes
 
 
 def human_entry(name: str, x: float, y: float) -> dict:
@@ -119,13 +72,14 @@ def clear_humans(scene: dict) -> dict:
 
 class Director(Node):
 
-    def __init__(self, args, nodes):
+    def __init__(self, args):
         super().__init__('test_director')
-        self._nodes = nodes
         self._mode = args.mode
         self._inject = args.inject.split(',')
         self._transient = args.transient
         self._fired = False
+
+        self._nodes = self._fetch_nodes()   # from get_zone, not a CSV
 
         # always start human-free so the agent's first observation is clean
         write_scene(clear_humans(load_scene()))
@@ -133,15 +87,34 @@ class Director(Node):
         if self._mode == 'static':
             self._do_inject()
             self.get_logger().warn(f"STATIC: humans on {self._inject} before observing")
-
         elif self._mode == 'on_move':
             self._sub = self.create_subscription(
                 RobotState, '/arm_1/niryo_robot/robot_state', self._on_state, 10)
             self.get_logger().info(
                 f"ON_MOVE: waiting for the arm to move, then inject on {self._inject}")
-
         elif self._mode == 'manual':
             threading.Thread(target=self._manual_loop, daemon=True).start()
+
+    def _fetch_nodes(self) -> dict:
+        """{node: (x, y)} from the world model's get_zone — the authoritative source."""
+        client = self.create_client(GetZone, "/world_model_server/get_zone")
+        if not client.wait_for_service(timeout_sec=10.0):
+            self.get_logger().error("get_zone service unavailable")
+            return {}
+
+        nodes = {}
+        for name in GRAPH_NODES:
+            req = GetZone.Request()
+            req.zone = name
+            fut = client.call_async(req)
+            rclpy.spin_until_future_complete(self, fut, timeout_sec=5.0)
+            resp = fut.result()
+            if resp is not None and resp.success:
+                nodes[name] = (resp.position.x, resp.position.y)
+                self.get_logger().info(f"  {name}: ({resp.position.x:.3f}, {resp.position.y:.3f})")
+            else:
+                self.get_logger().warn(f"get_zone('{name}') failed/unknown")
+        return nodes
 
     def _do_inject(self):
         scene = load_scene()
@@ -190,10 +163,8 @@ def main():
     p.add_argument('--transient', type=float, default=None, help='remove human after T seconds')
     args = p.parse_args()
 
-    nodes = load_nodes()
-
     rclpy.init()
-    director = Director(args, nodes)
+    director = Director(args)
     try:
         rclpy.spin(director)
     except KeyboardInterrupt:

@@ -1,19 +1,19 @@
 {
   "objects": [
     {
-      "id": "cube_1",
-      "class_id": "cube",
+      "id": "circle_1",
+      "class_id": "circle",
       "color": "green",
       "score": 0.97,
       "position": {
-        "x": 0.21,
-        "y": -0.04,
-        "z": 0.01
+        "x": 0.0062,
+        "y": -0.2426,
+        "z": 0.0428
       },
       "rpy": {
-        "roll": 0.0,
-        "pitch": 0.0,
-        "yaw": -0.3
+        "roll": -0.0591,
+        "pitch": 1.5526,
+        "yaw": -1.6102
       },
       "size": {
         "x": 0.02,

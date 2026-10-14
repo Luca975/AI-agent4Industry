@@ -11,3 +11,5 @@ class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
     phase: Literal["idle","running","complete", "emergency"]
     step_budget : int                                                          # LLM turns left for this task; hits emergency at 0
+    task_start: int                                                            # index in messages where the current task began
+    last_summary: Optional[str]                                                # one-line summary of the previous task, injected next

@@ -22,6 +22,7 @@ from geometry_msgs.msg import Point
 from niryo_ned_ros2_interfaces.action import RobotMove, Tool
 from niryo_ned_ros2_interfaces.msg import ArmMoveCommand, ToolCommand, RPY
 from niryo_world_interfaces.srv import CheckPath, CheckNode
+from niryo_ned_ros2_interfaces.srv import ObjDetection, GetTargetPose, GetWorkspaceRatio
 
 from ros_lib.base import ClientBase
 
@@ -32,15 +33,28 @@ class NiryoDriverClient(ClientBase):
     CHECK_PATH = "/world_model_server/check_path"
     CHECK_NODE = "/world_model_server/check_node"
 
-    def __init__(self, tool_id: int = 11, poll_period: float = 0.1)->None:
+    OBJ_DETECTION = "/arm_1/niryo_robot_vision/obj_detection_rel"
+    GET_TARGET_POSE = "/arm_1/niryo_robot_poses_handlers/get_target_pose"
+    GET_WS_RATIO = "/arm_1/niryo_robot_poses_handlers/get_workspace_ratio"
+
+    GRIP_SPEED = 500
+    GRIP_MAX_TORQUE = 100      
+    GRIP_HOLD_TORQUE = 100     
+    SHAPE_MAP = {"cube": "SQUARE", "circle": "CIRCLE"}
+
+    def __init__(self, tool_id: int = 12, poll_period: float = 0.1, workspace: str = "workspace_1")->None:
         super().__init__('agent_niryo_driver_client')
         self._tool_id = tool_id
         self._poll_period = poll_period
+        self._workspace = workspace
 
         self._move_client = ActionClient(self, RobotMove, self.MOVE_ACTION, callback_group=self.cb_group)
         self._tool_client = ActionClient(self, Tool, self.TOOL_ACTION, callback_group=self.cb_group)
         self._check_path_client = self.create_client(CheckPath, self.CHECK_PATH, callback_group=self.cb_group)
         self._check_node_client = self.create_client(CheckNode, self.CHECK_NODE, callback_group=self.cb_group)
+        self._detect_client = self.create_client(ObjDetection, self.OBJ_DETECTION, callback_group=self.cb_group)
+        self._target_pose_client = self.create_client(GetTargetPose, self.GET_TARGET_POSE, callback_group=self.cb_group)
+        self._ws_ratio_client = self.create_client(GetWorkspaceRatio, self.GET_WS_RATIO, callback_group=self.cb_group)
 
     # --- world-model safety checks -------------------------------------------
 
@@ -153,6 +167,9 @@ class NiryoDriverClient(ClientBase):
         cmd = ToolCommand()
         cmd.cmd_type = ToolCommand.CLOSE_GRIPPER if close else ToolCommand.OPEN_GRIPPER
         cmd.tool_id = self._tool_id
+        cmd.speed = self.GRIP_SPEED
+        cmd.max_torque_percentage = self.GRIP_MAX_TORQUE
+        cmd.hold_torque_percentage = self.GRIP_HOLD_TORQUE
         goal = Tool.Goal()
         goal.cmd = cmd
 
@@ -178,3 +195,44 @@ class NiryoDriverClient(ClientBase):
         if result.result.status < 0:
             return False, result.result.message
         return True, result.result.message
+
+
+    def locate_piece(self, shape: str = "ANY", color: str = "ANY", timeout_sec: float = 5.0):
+        """Locate a piece with the wrist camera and return its cartesian grasp pose.
+        """
+
+        shape = self.SHAPE_MAP.get(shape.lower(), shape.upper()) if shape else "ANY"
+        color = color.upper() if color else "ANY"
+        ratio_req = GetWorkspaceRatio.Request()
+        ratio_req.workspace = self._workspace
+        ratio_resp = self._call_sync(self._ws_ratio_client, ratio_req, timeout_sec)
+        if ratio_resp is None or ratio_resp.status != 1:
+            return False, f"could not get workspace ratio for '{self._workspace}'"
+
+        det_req = ObjDetection.Request()
+        det_req.obj_type = shape
+        det_req.obj_color = color
+        det_req.workspace_ratio = ratio_resp.ratio
+        det_req.ret_image = False
+        det_resp = self._call_sync(self._detect_client, det_req, timeout_sec)
+        if det_resp is None:
+            return False, "object detection service failed"
+        if det_resp.status != 1:
+            return False, f"piece not detected: {shape} {color}"
+
+        rel = det_resp.obj_pose
+
+        tp_req = GetTargetPose.Request()
+        tp_req.workspace = self._workspace
+        tp_req.height_offset = 0.0
+        tp_req.x_rel = rel.x
+        tp_req.y_rel = rel.y
+        tp_req.yaw_rel = rel.yaw
+        tp_resp = self._call_sync(self._target_pose_client, tp_req, timeout_sec)
+        if tp_resp is None or tp_resp.status != 1:
+            return False, "could not convert detection to an arm pose"
+
+        p = tp_resp.target_pose   # RobotState; use rpy (its orientation quat is zeroed)
+        pose = [p.position.x, p.position.y, p.position.z,
+                p.rpy.roll, p.rpy.pitch, p.rpy.yaw]
+        return True, pose
