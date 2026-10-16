@@ -3,7 +3,7 @@
     {
       "id": "circle_1",
       "class_id": "circle",
-      "color": "red",
+      "color": "green",
       "score": 0.97,
       "position": {
         "x": -0.0144,
@@ -19,48 +19,6 @@
         "x": 0.02,
         "y": 0.02,
         "z": 0.02
-      }
-    },
-    {
-      "id": "circle_2",
-      "class_id": "circle",
-      "color": "blue",
-      "score": 0.97,
-      "position": {
-        "x": 0.0101,
-        "y": -0.2533,
-        "z": 0.0426
-      },
-      "rpy": {
-        "roll": -0.3791,
-        "pitch": 1.5526,
-        "yaw": -1.6102
-      },
-      "size": {
-        "x": 0.02,
-        "y": 0.02,
-        "z": 0.02
-      }
-    },
-    {
-      "id": "person_1",
-      "class_id": "person",
-      "color": "",
-      "score": 0.95,
-      "position": {
-        "x": 0.20645511434163355,
-        "y": 0.08608002723926993,
-        "z": 0.0
-      },
-      "rpy": {
-        "roll": 0.0,
-        "pitch": 0.0,
-        "yaw": 0.0
-      },
-      "size": {
-        "x": 0.1,
-        "y": 0.1,
-        "z": 0.1
       }
     }
   ]

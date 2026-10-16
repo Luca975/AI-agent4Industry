@@ -137,6 +137,7 @@ def set_problem(problem_str:str, runtime: ToolRuntime[AgentContext]) -> Command:
     return Command(
         update={
             "cur_problem": problem_str,
+            "planning_status": "pending",
             "messages":[
                 ToolMessage(
                     content="Problem stored in the agent state.",
