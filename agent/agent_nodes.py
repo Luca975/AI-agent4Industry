@@ -9,6 +9,7 @@ from agent_state import AgentState
 from agent_context import AgentContext
 from agent_tools import tools
 from agent_prompts import SYSTEM_PROMPT
+import bench
 
 MAX_REPLAN = 3
 MAX_NO_PLAN = 3
@@ -106,7 +107,8 @@ def llm_node(state:AgentState)->AgentState:
 
     curr_prompt += state["messages"][state.get("task_start",0):]
     #messages = [SystemMessage(content=SYSTEM_PROMPT)]+state["messages"]
-    response = llm.invoke(curr_prompt)
+    response = llm.invoke(curr_prompt,
+                          extra_headers={"X-Request-Id": bench.label} if bench.label else None)
     return {"messages":[response],
             "step_count": state.get("step_count",0)+1}
 

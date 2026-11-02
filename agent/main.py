@@ -12,6 +12,7 @@ from rich.markup import escape
 
 from agent_graph import graph
 from agent_context import AgentContext
+import bench
 
 from plansys2_lib.problem_expert import ProblemExpert
 from plansys2_lib.domain_expert import DomainExpert
@@ -126,6 +127,9 @@ def main()->None:
     )
 
     config = {"configurable" : {"thread_id" : "1"}}
+    recorder = bench.setup("pddl")
+    if recorder:
+            config["callbacks"]=[recorder]
 
     state = {
         "messages" : [],
@@ -146,6 +150,9 @@ def main()->None:
             user_input = console.input(
                 f"\n[bold yellow]💬 {escape(str(interrupt.value))}[/]\n> "
             )
+            label = bench.next_label(interrupt.value, user_input)
+            if label:
+                console.print(f"[bold magenta]▶ {label}[/]")
             interrupt = run_streaming(Command(resume=user_input), config, context)
         console.print("\nAgent stopped")
 
