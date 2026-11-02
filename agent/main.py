@@ -13,6 +13,7 @@ from rich.markup import escape
 from agent_graph import graph
 from agent_context import AgentContext
 from agent_nodes import STEP_BUDGET
+import bench
 
 from ros_lib.scene_observer import SceneObserver
 from ros_lib.niryo_driver import NiryoDriverClient
@@ -111,6 +112,9 @@ def main() -> None:
     )
 
     config = {"configurable": {"thread_id": "1"}}
+    recorder = bench.setup("E2E")
+    if recorder:
+        config["callbacks"] = [recorder]
 
     state = {
         "messages": [],
@@ -128,6 +132,9 @@ def main() -> None:
             user_input = console.input(
                 f"\n[bold yellow]💬 {escape(str(interrupt.value))}[/]\n> "
             )
+            label = bench.next_label(interrupt.value, user_input)
+            if label:
+                console.print(f"[bold magenta]▶ {label}[/]")            
             interrupt = run_streaming(Command(resume=user_input), config, context)
         console.print("\nAgent stopped")
 

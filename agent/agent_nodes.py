@@ -8,6 +8,7 @@ from langgraph.runtime import Runtime
 from agent_state import AgentState
 from agent_tools import tools
 from agent_prompts import SYSTEM_PROMPT
+import bench
 
 STEP_BUDGET = 25
 
@@ -97,7 +98,8 @@ def llm_node(state:AgentState)->AgentState:
         system += f"\n\nPrevious task: {state['last_summary']}"
 
     messages = [SystemMessage(content=system)] + state["messages"][state.get("task_start", 0):]
-    response = llm.invoke(messages)
+    response = llm.invoke(messages,
+                          extra_headers={"X-Request-Id": bench.label} if bench.label else None)
     return {
         "messages": [response],
         "step_budget": state.get("step_budget", STEP_BUDGET) - 1,
