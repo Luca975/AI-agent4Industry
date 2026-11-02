@@ -127,7 +127,7 @@ def main()->None:
     )
 
     config = {"configurable" : {"thread_id" : "1"}}
-    recorder = bench.setup("pddl")
+    recorder = bench.setup("asF")
     if recorder:
             config["callbacks"]=[recorder]
 
