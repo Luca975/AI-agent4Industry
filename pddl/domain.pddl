@@ -68,13 +68,17 @@
                     (at ?x ?y)
                 )
             )
-    :effect    (at end (and 
-                    (not(available ?x))
+    :effect    (and 
+                (at start  
+                    (not(available ?x)))
+                (at end (and
                     (holding ?x ?z)
                     (at ?x ?y)
                     (not(at ?z ?y))
-                    )
+                    )                
                 )
+
+    )
 )
 
 (:durative-action place
