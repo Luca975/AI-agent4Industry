@@ -13,6 +13,7 @@ from rich.markup import escape
 from agent_graph import graph
 from agent_context import AgentContext
 import bench
+from tool_counter import ToolCounter
 
 from plansys2_lib.problem_expert import ProblemExpert
 from plansys2_lib.domain_expert import DomainExpert
@@ -127,9 +128,13 @@ def main()->None:
     )
 
     config = {"configurable" : {"thread_id" : "1"}}
+    
     recorder = bench.setup("asF")
     if recorder:
             config["callbacks"]=[recorder]
+
+    counter = ToolCounter()
+    config.setdefault("callbacks",[]).append(counter)
 
     state = {
         "messages" : [],
@@ -154,6 +159,9 @@ def main()->None:
             if label:
                 console.print(f"[bold magenta]▶ {label}[/]")
             interrupt = run_streaming(Command(resume=user_input), config, context)
+            if counter.turns:
+                console.print(f"[bold magenta]{escape(counter.report())}[/]")
+            counter.reset()
         console.print("\nAgent stopped")
 
     finally:
