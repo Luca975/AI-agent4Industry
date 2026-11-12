@@ -1,10 +1,12 @@
+"""This version of the graph DOES NOT USE the Niryo-Ned2. The graph is edited for troubleshooting reasons"""
+
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import InMemorySaver
 
 from agent_state import AgentState
 from agent_tools import tools
-from agent_nodes import (idle_node, llm_node, running_node, emergency_node, recover_node, planning_node, MAX_NO_PLAN, MAX_STEPS)
+from agent_nodes import (idle_node, llm_node, emergency_node, recover_node, planning_node, MAX_NO_PLAN, MAX_STEPS)
 from agent_context import AgentContext
 
 def route_from_idle(state:AgentState)->str:
@@ -40,28 +42,28 @@ def route_from_planning(state: AgentState) -> str:
     """Map the outcome of planning_node.
  
     - fault     -> idle      : ROS/system error, the model cannot fix it.
-    - solved    -> running   : plan found, execute it.
+    - solved    -> idle      : plan found.
     - cap       -> emergency : MAX_NO_PLAN failed attempts (empty, rejected or unsolvable).
     - otherwise -> llm       : guidance was sent, let the model fix the problem.
     """
     if state.get("phase") == "fault":
         return "fault"
     if state.get("planning_status") == "solved":
-        return "running"
+        return "solved"
     if state.get("no_plan_count", 0) >= MAX_NO_PLAN:
         return "emergency"
     return "llm"
 
-def route_from_running(state: AgentState) -> str:
-    """Map the phase set by running_node to the next node. 'fault' is wired to idle."""
-    phase = state.get("phase")
-    if phase == "complete":
-        return "idle"
-    if phase == "replan":
-        return "llm"
-    if phase == "emergency":
-        return "emergency"
-    return "fault"
+# def route_from_running(state: AgentState) -> str:
+#     """Map the phase set by running_node to the next node. 'fault' is wired to idle."""
+#     phase = state.get("phase")
+#     if phase == "complete":
+#         return "idle"
+#     if phase == "replan":
+#         return "llm"
+#     if phase == "emergency":
+#         return "emergency"
+#     return "fault"
 
 def route_from_tools(state: AgentState) -> str:
     """set_problem marks the problem as "pending": hand it to the planning pipeline.
@@ -80,7 +82,7 @@ builder.add_node("idle",idle_node)
 builder.add_node("llm",llm_node)
 builder.add_node("tools",ToolNode(tools))
 builder.add_node("planning",planning_node)
-builder.add_node("running",running_node)
+#builder.add_node("running",running_node)
 builder.add_node("emergency",emergency_node)
 builder.add_node("recover", recover_node)
 
@@ -101,18 +103,18 @@ builder.add_conditional_edges("tools", route_from_tools, {
 })
 
 builder.add_conditional_edges("planning", route_from_planning, {
-    "running": "running",
+    "solved": "idle",
     "llm": "llm",
     "emergency": "emergency",
     "fault": "idle",
 })
 
-builder.add_conditional_edges("running", route_from_running, {
-    "idle": "idle",
-    "llm": "llm",
-    "emergency": "emergency",
-    "fault": "idle",
-})
+# builder.add_conditional_edges("running", route_from_running, {
+#     "idle": "idle",
+#     "llm": "llm",
+#     "emergency": "emergency",
+#     "fault": "idle",
+# })
 builder.add_conditional_edges("recover", route_from_recover, {
     "llm": "llm",
     "fault": "idle",
