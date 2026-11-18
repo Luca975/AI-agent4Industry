@@ -20,5 +20,5 @@ class AgentContext:
     planner_client: Planner
     domain_client: DomainExpert
     scene_client: SceneObserver
-#    executor_client:Executor
+    executor_client:Executor
 #    home_pos_client:ArmCommander
