@@ -7,10 +7,12 @@ from langgraph.types import Command
 
 @tool
 def observe_scene(runtime: ToolRuntime[AgentContext]) -> str:
-    """Return the objects currently in the scene and the transit graph (topology),
-    in symbolic form. Use it whenever you need to know what is present, where things
-    are, their colors, or how locations are connected — both to ANSWER QUESTIONS about
-    the scene and to build a PDDL problem for a manipulation task."""
+    """Observe the current scene and return the detected objects and the graph of transit path in symbolic form,
+    ready to build the PDDL problem. Use this tool at the beginning, before generating the problem."""
+    # """Return the objects currently in the scene and the transit graph (topology),
+    # in symbolic form. Use it whenever you need to know what is present, where things
+    # are, their colors, or how locations are connected — both to ANSWER QUESTIONS about
+    # the scene and to build a PDDL problem for a manipulation task."""
 
     success, objects, paths, info = runtime.context.scene_client.observe_scene()
     if not success:
@@ -54,9 +56,10 @@ def observe_scene(runtime: ToolRuntime[AgentContext]) -> str:
 
 @tool
 def get_domain(runtime: ToolRuntime[AgentContext]) -> str:
-    """Return the current PDDL domain: types, predicates and actions. Use it to ANSWER
-    QUESTIONS about what the robot can do (its actions) or about the domain structure,
-    and to build a PDDL problem consistent with the domain."""
+    """Read the current PDDL domain. Use this when you need to know the domain to generate a coherent problem"""
+    # """Return the current PDDL domain: types, predicates and actions. Use it to ANSWER
+    # QUESTIONS about what the robot can do (its actions) or about the domain structure,
+    # and to build a PDDL problem consistent with the domain."""
 
     success, domain, info = runtime.context.domain_client.get_domain()
     if success:
@@ -146,9 +149,11 @@ def get_domain(runtime: ToolRuntime[AgentContext]) -> str:
 
 @tool
 def set_problem(problem_str:str, runtime: ToolRuntime[AgentContext]) -> Command:
-    """Submit the PDDL problem you wrote. Pass the full PDDL problem as a single string.
-    The system then loads it and plans automatically: if you receive an error, fix the
-    problem and call set_problem again."""
+    """Store the generated problem in the agent state, to be later sent to the system with the send_problem tool.
+    Pass the full PDDL problem as a single string. Call this once you have written the problem"""
+    # """Submit the PDDL problem you wrote. Pass the full PDDL problem as a single string.
+    # The system then loads it and plans automatically: if you receive an error, fix the
+    # problem and call set_problem again."""
 
     # planning_status = "pending" is the signal route_from_tools uses to enter planning_node
     return Command(
@@ -157,7 +162,7 @@ def set_problem(problem_str:str, runtime: ToolRuntime[AgentContext]) -> Command:
             "planning_status": "pending",
             "messages":[
                 ToolMessage(
-                    content="Problem received. Loading and planning it now.",
+                    content="Problem stored in the agent state.",
                     tool_call_id=runtime.tool_call_id,
                 )
             ],
